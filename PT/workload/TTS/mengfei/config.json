@@ -1,0 +1,30 @@
+{
+    "framework": "PyTorch",
+    "model": "TTS",
+    "requirement": "",
+
+    "benchmark": [
+        {
+            "basecommit": "20a6ab3d612eea849a49801d365fcd071839b7a1",
+            "patch": "inference.patch",
+            "precision": "fp32",
+            "mode": "realtime",
+            "batch_size": "1",
+            "cores_per_instance": "4",
+            "checkpoint": "/mnt/local_disk/jenkins/pytorch/TTS/models/tacotron2/best_model.pth.tar",
+            "dataset": "/mnt/local_disk/jenkins/pytorch/TTS/datasets/ljspeech/truncated_metadata.csv",
+            "script_path": "TTS_inf.sh"
+        },
+        {
+            "basecommit": "20a6ab3d612eea849a49801d365fcd071839b7a1",
+            "patch": "inference.patch",
+            "precision": "fp32",
+            "mode": "throughput",
+            "batch_size": "1",
+            "cores_per_instance": "24",
+            "checkpoint": "/mnt/local_disk/jenkins/pytorch/TTS/models/tacotron2/best_model.pth.tar",
+            "dataset": "/mnt/local_disk/jenkins/pytorch/TTS/datasets/ljspeech/truncated_metadata.csv",
+            "script_path": "TTS_inf.sh"
+        }
+    ]
+}

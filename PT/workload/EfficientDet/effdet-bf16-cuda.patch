@@ -1,0 +1,116 @@
+diff --git a/datasets/voc0712.py b/datasets/voc0712.py
+index 4814754..00e110f 100644
+--- a/datasets/voc0712.py
++++ b/datasets/voc0712.py
+@@ -84,7 +84,7 @@ class VOCDetection(data.Dataset):
+     """
+ 
+     def __init__(self, root,
+-                 image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
++                 image_sets=[('2007', 'train_test'), ('2007', 'train_test')],
+                  transform=None, target_transform=VOCAnnotationTransform(),
+                  dataset_name='VOC0712'):
+         self.root = root
+@@ -98,7 +98,7 @@ class VOCDetection(data.Dataset):
+         for (year, name) in image_sets:
+             rootpath = osp.join(self.root, 'VOC' + year)
+             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
+-                self.ids.append((rootpath, line.strip()))
++                self.ids.append((rootpath, line[0:6].strip()))
+ 
+     def __getitem__(self, index):
+         img_id = self.ids[index]
+diff --git a/models/utils.py b/models/utils.py
+index 34c8649..5be5d72 100644
+--- a/models/utils.py
++++ b/models/utils.py
+@@ -303,14 +303,14 @@ def get_model_params(model_name, override_params):
+ 
+ 
+ url_map = {
+-    'efficientnet-b0': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b0-355c32eb.pth',
+-    'efficientnet-b1': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b1-f1951068.pth',
+-    'efficientnet-b2': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b2-8bb594d6.pth',
+-    'efficientnet-b3': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b3-5fb5a3c3.pth',
+-    'efficientnet-b4': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b4-6ed6700e.pth',
+-    'efficientnet-b5': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b5-b6417697.pth',
+-    'efficientnet-b6': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b6-c76e70fd.pth',
+-    'efficientnet-b7': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b7-dcc49843.pth',
++    'efficientnet-b0': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b0-355c32eb.pth',
++    'efficientnet-b1': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b1-f1951068.pth',
++    'efficientnet-b2': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b2-8bb594d6.pth',
++    'efficientnet-b3': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b3-5fb5a3c3.pth',
++    'efficientnet-b4': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b4-6ed6700e.pth',
++    'efficientnet-b5': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b5-b6417697.pth',
++    'efficientnet-b6': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b6-c76e70fd.pth',
++    'efficientnet-b7': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth',
+ }
+ 
+ 
+diff --git a/train.py b/train.py
+index 8e90697..71e8285 100644
+--- a/train.py
++++ b/train.py
+@@ -33,6 +33,29 @@ from datasets import VOCDetection, CocoDataset, get_augumentation, detection_col
+ from utils import EFFICIENTDET, get_state_dict
+ from eval import evaluate, evaluate_coco
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
++        
+ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+ parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
+                     type=str, help='VOC or COCO')
+@@ -91,6 +114,7 @@ parser.add_argument(
+ 
+ iteration = 1
+ 
++batch_time = AverageMeter('Time', ':6.3f') #kyao
+ 
+ def train(train_loader, model, scheduler, optimizer, epoch, args):
+     global iteration
+@@ -101,7 +125,9 @@ def train(train_loader, model, scheduler, optimizer, epoch, args):
+     model.module.is_training = True
+     model.module.freeze_bn()
+     optimizer.zero_grad()
++    end = time.time() #kyao
+     for idx, (images, annotations) in enumerate(train_loader):
++        print("am training")
+         images = images.cuda().float()
+         annotations = annotations.cuda()
+         classification_loss, regression_loss = model([images, annotations])
+@@ -117,6 +143,14 @@ def train(train_loader, model, scheduler, optimizer, epoch, args):
+             optimizer.step()
+             optimizer.zero_grad()
+ 
++        batch_time.update(time.time() - end) #kyao
++        end = time.time() #kyao
++        ### performance computation #kyao
++        latency = batch_time.avg / args.batch_size * 1000 #kyao
++        throughput = args.batch_size / batch_time.avg #kyao
++        print('training latency: %.3f ms on %d epoch'%(latency, epoch)) #kyao
++        print('training throughput: %.3f fps on %d epoch'%(throughput, epoch)) #kyao
++        
+         total_loss.append(loss.item())
+         if(iteration % 300 == 0):
+             print('{} iteration: training ...'.format(iteration))

@@ -1,0 +1,374 @@
+diff --git a/eval_lm.py b/eval_lm.py
+index f7add27e..63cc50c0 100644
+--- a/eval_lm.py
++++ b/eval_lm.py
+@@ -50,6 +50,17 @@ def main(parsed_args):
+ 
+     print(parsed_args)
+ 
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        device = ipex.DEVICE
++        if args.precision == 'bfloat16':
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++
++    if args.precision == "bfloat16":
++        # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++        print("Running with bfloat16...")
++
+     use_cuda = torch.cuda.is_available() and not parsed_args.cpu
+ 
+     task = tasks.setup_task(parsed_args)
+@@ -92,6 +103,12 @@ def main(parsed_args):
+             model.half()
+         if use_cuda:
+             model.cuda()
++        if args.ipex:
++            model = model.to(device)
++        if args.channels_last:
++            model_oob = model
++            model_oob = model_oob.to(memory_format=torch.channels_last)
++            model = model_oob
+ 
+     assert len(models) > 0
+ 
+@@ -141,6 +158,7 @@ def main(parsed_args):
+                 continue
+ 
+             sample = utils.move_to_cuda(sample) if use_cuda else sample
++            sample = utils.move_to_ipex(sample) if args.ipex else sample
+ 
+             gen_timer.start()
+             hypos = scorer.generate(models, sample)
+diff --git a/examples/speech_recognition/infer.py b/examples/speech_recognition/infer.py
+index ce5f4f76..85ec978e 100644
+--- a/examples/speech_recognition/infer.py
++++ b/examples/speech_recognition/infer.py
+@@ -229,8 +229,9 @@ def main(args):
+             1.0 / gen_timer.avg,
+         )
+     )
+-    logger.info("| Generate {} with beam={}".format(args.gen_subset, args.beam))
+ 
++    logger.info("| Generate {} with beam={}".format(args.gen_subset, args.beam))
++    logger.info("| Throughput:{:.2f}".format(num_sentences / gen_timer.sum))
+ 
+ def cli_main():
+     parser = options.get_generation_parser()
+diff --git a/fairseq/options.py b/fairseq/options.py
+index 1bd54d57..0b23a9ea 100644
+--- a/fairseq/options.py
++++ b/fairseq/options.py
+@@ -193,6 +193,18 @@ def get_parser(desc, default_task='translation'):
+                         help='threshold FP16 loss scale from below')
+     parser.add_argument('--user-dir', default=None,
+                         help='path to a python module containing custom extensions (tasks and/or architectures)')
++    parser.add_argument('--ipex', action='store_true', default=False,
++                        help='enable Intel_PyTorch_Extension')
++    parser.add_argument('--precision', type=str, default="float32",
++                    help='precision, float32, bfloat16')
++    parser.add_argument('--max_iters', default=0, type=int, metavar='N',
++                        help='max iterations to run')
++    parser.add_argument('--warmup_iters', default=10, type=int, metavar='N',
++                        help='iterations number to warmup')
++    parser.add_argument('--channels_last', type=int, default=1,
++                        help='use channels last format')
++    parser.add_argument('--profile', action='store_true',
++                        help='Trigger profile on current topology.')
+ 
+     from fairseq.registry import REGISTRIES
+     for registry_name, REGISTRY in REGISTRIES.items():
+diff --git a/fairseq/search.py b/fairseq/search.py
+index afcc388d..82896b71 100644
+--- a/fairseq/search.py
++++ b/fairseq/search.py
+@@ -78,7 +78,7 @@ class BeamSearch(Search):
+             ),
+             out=(self.scores_buf, self.indices_buf),
+         )
+-        torch.div(self.indices_buf, vocab_size, out=self.beams_buf)
++        torch.floor_divide(self.indices_buf, vocab_size, out=self.beams_buf)
+         self.indices_buf.fmod_(vocab_size)
+         return self.scores_buf, self.indices_buf, self.beams_buf
+ 
+diff --git a/fairseq/utils.py b/fairseq/utils.py
+index 1af23944..c86a2243 100644
+--- a/fairseq/utils.py
++++ b/fairseq/utils.py
+@@ -57,6 +57,12 @@ def move_to_cuda(sample):
+ 
+     return apply_to_sample(_move_to_cuda, sample)
+ 
++def move_to_ipex(sample):
++    import intel_pytorch_extension as ipex
++    def _move_to_ipex(tensor):
++        return tensor.to(device=ipex.DEVICE)
++
++    return apply_to_sample(_move_to_ipex, sample)
+ 
+ INCREMENTAL_STATE_INSTANCE_ID = defaultdict(lambda: 0)
+ 
+diff --git a/generate.py b/generate.py
+index c23cc798..1703722d 100644
+--- a/generate.py
++++ b/generate.py
+@@ -8,7 +8,7 @@ Translate pre-processed data with a trained model.
+ """
+ 
+ import torch
+-
++import os
+ from fairseq import bleu, checkpoint_utils, options, progress_bar, tasks, utils
+ from fairseq.meters import StopwatchMeter, TimeMeter
+ 
+@@ -26,6 +26,17 @@ def main(args):
+         args.max_tokens = 12000
+     print(args)
+ 
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        device = ipex.DEVICE
++        if args.precision == 'bfloat16':
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++
++    if args.precision == "bfloat16":
++        # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++        print("Running with bfloat16...")
++
+     use_cuda = torch.cuda.is_available() and not args.cpu
+ 
+     # Load dataset splits
+@@ -57,6 +68,14 @@ def main(args):
+             model.half()
+         if use_cuda:
+             model.cuda()
++        if args.channels_last:
++            model_oob = model
++            model_oob = model_oob.to(memory_format=torch.channels_last)
++            model = model_oob
++            print("---- Use channels last format.")
++        if args.ipex:
++            model = model.to(device)
++            # print(model)
+ 
+     # Load alignment dictionary for unknown word replacement
+     # (None if no unknown word replacement, empty if no path to align dictionary)
+@@ -91,8 +110,13 @@ def main(args):
+     has_target = True
+     with progress_bar.build_progress_bar(args, itr) as t:
+         wps_meter = TimeMeter()
+-        for sample in t:
+-            sample = utils.move_to_cuda(sample) if use_cuda else sample
++        for iters_runned, sample in enumerate(t):
++            if args.max_iters > 0 and iters_runned >= args.max_iters + args.warmup_iters:
++                break
++            if args.ipex:
++                sample = utils.move_to_ipex(sample)
++            else:
++                sample = utils.move_to_cuda(sample) if use_cuda else sample
+             if 'net_input' not in sample:
+                 continue
+ 
+@@ -100,10 +124,24 @@ def main(args):
+             if args.prefix_size > 0:
+                 prefix_tokens = sample['target'][:, :args.prefix_size]
+ 
+-            gen_timer.start()
+-            hypos = task.inference_step(generator, models, sample, prefix_tokens)
++            if iters_runned >= args.warmup_iters:
++                gen_timer.start()
++            if args.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            hypos = task.inference_step(generator, models, sample, prefix_tokens)
++                    else:
++                        hypos = task.inference_step(generator, models, sample, prefix_tokens)
++            else:
++                if args.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        hypos = task.inference_step(generator, models, sample, prefix_tokens)
++                else:
++                    hypos = task.inference_step(generator, models, sample, prefix_tokens)
+             num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
+-            gen_timer.stop(num_generated_tokens)
++            if iters_runned >= args.warmup_iters:
++                gen_timer.stop(num_generated_tokens)
+ 
+             for i, sample_id in enumerate(sample['id'].tolist()):
+                 has_target = sample['target'] is not None
+@@ -128,9 +166,9 @@ def main(args):
+ 
+                 if not args.quiet:
+                     if src_dict is not None:
+-                        print('S-{}\t{}'.format(sample_id, src_str))
++                        print('S-{}\t{}'.format(sample_id, src_str.encode("utf-8")))
+                     if has_target:
+-                        print('T-{}\t{}'.format(sample_id, target_str))
++                        print('T-{}\t{}'.format(sample_id, target_str.encode("utf-8")))
+ 
+                 # Process top predictions
+                 for j, hypo in enumerate(hypos[i][:args.nbest]):
+@@ -144,7 +182,7 @@ def main(args):
+                     )
+ 
+                     if not args.quiet:
+-                        print('H-{}\t{}\t{}'.format(sample_id, hypo['score'], hypo_str))
++                        print('H-{}\t{}\t{}'.format(sample_id, hypo['score'], hypo_str.encode("utf-8")))
+                         print('P-{}\t{}'.format(
+                             sample_id,
+                             ' '.join(map(
+@@ -171,13 +209,45 @@ def main(args):
+ 
+             wps_meter.update(num_generated_tokens)
+             t.log({'wps': round(wps_meter.avg)})
+-            num_sentences += sample['nsentences']
++            if iters_runned >= args.warmup_iters:
++                num_sentences += sample['nsentences']
+ 
+     print('| Translated {} sentences ({} tokens) in {:.1f}s ({:.2f} sentences/s, {:.2f} tokens/s)'.format(
+         num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
+     if has_target:
+         print('| Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
++    print("inference Throughput: {:.3f} sentences/s".format(num_sentences / gen_timer.sum))
++    if args.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    "transformerlt" + str(iters_runned) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
+     return scorer
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
+ 
+ 
+ def cli_main():
+diff --git a/interactive.py b/interactive.py
+index d9d547a9..aef0cf0b 100644
+--- a/interactive.py
++++ b/interactive.py
+@@ -69,6 +69,17 @@ def main(args):
+ 
+     print(args)
+ 
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        device = ipex.DEVICE
++        if args.precision == 'bfloat16':
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++
++    if args.precision == "bfloat16":
++        # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++        print("Running with bfloat16...")
++
+     use_cuda = torch.cuda.is_available() and not args.cpu
+ 
+     # Setup task, e.g., translation
+@@ -96,6 +107,12 @@ def main(args):
+             model.half()
+         if use_cuda:
+             model.cuda()
++        if args.ipex:
++            model = model.to(device)
++        if args.channels_last:
++            model_oob = model
++            model_oob = model_oob.to(memory_format=torch.channels_last)
++            model = model_oob
+ 
+     # Initialize generator
+     generator = task.build_generator(args)
+@@ -139,6 +156,14 @@ def main(args):
+             if use_cuda:
+                 src_tokens = src_tokens.cuda()
+                 src_lengths = src_lengths.cuda()
++            if args.ipex:
++                src_tokens = src_tokens.to(device)
++                src_lengths = src_lengths.to(device)
++            if args.channels_last:
++                src_tokens_oob, src_lengths_oob = src_tokens, src_lengths
++                src_tokens_oob = src_tokens_oob.to(memory_format=torch.channels_last)
++                src_lengths_oob = src_lengths_oob.to(memory_format=torch.channels_last)
++                src_tokens, src_lengths = src_tokens_oob, src_lengths_oob
+ 
+             sample = {
+                 'net_input': {
+diff --git a/setup.py b/setup.py
+index 9ec2d736..dc0aa0b5 100644
+--- a/setup.py
++++ b/setup.py
+@@ -88,7 +88,6 @@ setup(
+         'numpy',
+         'regex',
+         'sacrebleu',
+-        'torch',
+         'tqdm',
+     ],
+     packages=find_packages(exclude=['scripts', 'tests']),
+diff --git a/validate.py b/validate.py
+index f768e8cc..3a4447e6 100644
+--- a/validate.py
++++ b/validate.py
+@@ -16,6 +16,17 @@ def main(args, override_args=None):
+     use_fp16 = args.fp16
+     use_cuda = torch.cuda.is_available() and not args.cpu
+ 
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        device = ipex.DEVICE
++        if args.precision == 'bfloat16':
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++
++    if args.precision == "bfloat16":
++        # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++        print("Running with bfloat16...")
++
+     if override_args is not None:
+         overrides = vars(override_args)
+         overrides.update(eval(getattr(override_args, 'model_overrides', '{}')))
+@@ -36,6 +47,12 @@ def main(args, override_args=None):
+             model.half()
+         if use_cuda:
+             model.cuda()
++        if args.channels_last:
++            model_oob = model
++            model_oob = model_oob.to(memory_format=torch.channels_last)
++            model = model_oob
++        if args.ipex:
++            model = model.to(device)
+ 
+     # Print args
+     print(model_args)
+@@ -75,6 +92,7 @@ def main(args, override_args=None):
+         log_outputs = []
+         for i, sample in enumerate(progress):
+             sample = utils.move_to_cuda(sample) if use_cuda else sample
++            sample = utils.move_to_ipex(sample) if args.ipex else sample
+             _loss, _sample_size, log_output = task.valid_step(sample, model, criterion)
+             progress.log(log_output, step=i)
+             log_outputs.append(log_output)

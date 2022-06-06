@@ -1,0 +1,99 @@
+From 6c857ca857f8d0d3589d6b9a7294d83d3a9e2665 Mon Sep 17 00:00:00 2001
+From: shwetaoj <shweta.ojha@intel.com>
+Date: Tue, 24 Nov 2020 10:48:14 -0800
+Subject: [PATCH] Added code for iterations, warmup and Throughput
+
+---
+ eval_parallel_wavenet.py |  8 +++++++-
+ wavenet/parallelgen.py   | 37 ++++++++++++++++++++++++++++---------
+ 2 files changed, 35 insertions(+), 10 deletions(-)
+
+diff --git a/eval_parallel_wavenet.py b/eval_parallel_wavenet.py
+index f675cbe..a51a495 100644
+--- a/eval_parallel_wavenet.py
++++ b/eval_parallel_wavenet.py
+@@ -51,6 +51,8 @@ def generate(args):
+ 
+     batch_size = args.batch_size
+     sample_length = args.sample_length
++    num_iter = args.num_iter
++    num_warmup = args.num_warmup
+     n = len(files)
+     for start in range(0, n, batch_size):
+         tf.logging.info('generating batch {:d}'.format(start // batch_size))
+@@ -64,7 +66,7 @@ def generate(args):
+         # use the original wave length.
+         batch_data = fastgen.load_batch(batch_files, sample_length=sample_length)
+         mel_data = mel_extractor.batch_melspectrogram(batch_data)
+-        parallelgen.synthesis(hparams, mel_data, save_names, checkpoint_path)
++        parallelgen.synthesis(hparams, mel_data, save_names, checkpoint_path, num_iter, num_warmup)
+ 
+ 
+ if __name__ == '__main__':
+@@ -90,5 +92,9 @@ if __name__ == '__main__':
+                              "DEBUG, INFO, WARN, ERROR, or FATAL.")
+     parser.add_argument("--gpu_id", default='0',
+                         help="gpu device for generation.")
++    parser.add_argument("-n", "--num_iter", type=int, default=500,
++                        help="numbers of inference iteration, default is 500")
++    parser.add_argument("--num_warmup", type=int, default=10,
++                        help="numbers of warmup iteration, default is 10")
+     args = parser.parse_args()
+     generate(args)
+diff --git a/wavenet/parallelgen.py b/wavenet/parallelgen.py
+index 7eecf29..bd6ef84 100644
+--- a/wavenet/parallelgen.py
++++ b/wavenet/parallelgen.py
+@@ -19,7 +19,7 @@ def load_parallelgen(hparams, batch_size=1, length=7680, num_mel=80):
+     return fg_dict
+ 
+ 
+-def synthesis(hparams, mel, save_paths, checkpoint_path):
++def synthesis(hparams, mel, save_paths, checkpoint_path, num_iter, num_warmup):
+     batch_size, length, num_mel = mel.shape
+     session_config = tf.ConfigProto(allow_soft_placement=True)
+     session_config.gpu_options.allow_growth = True
+@@ -39,13 +39,32 @@ def synthesis(hparams, mel, save_paths, checkpoint_path):
+             var_dict = fastgen.get_ema_shadow_dict(tf_vars)
+         saver = tf.train.Saver(var_dict, reshape=True)
+         saver.restore(sess, checkpoint_path)
+-
+-        start = time.time()
+-        audio = sess.run(fg_dict['x'],
++        
++        total_time = 0.0
++        iter_done = 0
++        for i in range(num_iter):
++            if i < num_warmup:
++                _ = sess.run(fg_dict['x'],
+                          feed_dict={fg_dict['mel_in']: mel})
+-        cost = time.time() - start
+-        wave_length = audio.shape[1] / 16000
+-        tf.logging.info('Target waveform length {:.5f}, ' 
+-                        'Session run consume {:.5f} secs, '
+-                        'Delay {:.2f}'.format(wave_length, cost, cost / wave_length))
++                continue
++            start = time.time()
++            audio = sess.run(fg_dict['x'],
++                             feed_dict={fg_dict['mel_in']: mel})
++            cost = time.time() - start
++            wave_length = audio.shape[1] / 16000
++            
++            tf.logging.info('Iteration {:d}, '
++                            'Target waveform length {:.5f}, ' 
++                            'Session run consume {:.5f} secs, '
++                            'Delay {:.2f}'.format(iter_done, wave_length, cost, cost / wave_length))
++            
++            total_time += cost
++            iter_done += 1
++            
++        avg_time = total_time / iter_done
++        tf.logging.info('Average time {:.5f}'.format(avg_time))
++        tf.logging.info('Length {:d}'.format(length))
++        throughput = length / avg_time
++        tf.logging.info('Throughput: {:.5f}'.format(length / avg_time)) 
++                        
+     fastgen.save_batch(audio, save_paths)
+-- 
+2.17.1
+

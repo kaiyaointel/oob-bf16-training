@@ -1,0 +1,228 @@
+diff --git a/single_stage_detector/ssd/train.py b/single_stage_detector/ssd/train.py
+index badfe52..eff77cb 100644
+--- a/single_stage_detector/ssd/train.py
++++ b/single_stage_detector/ssd/train.py
+@@ -16,7 +16,7 @@ from mlperf_logger import ssd_print, broadcast_seeds
+ def parse_args():
+     parser = ArgumentParser(description="Train Single Shot MultiBox Detector"
+                                         " on COCO")
+-    parser.add_argument('--data', '-d', type=str, default='/coco',
++    parser.add_argument('--data', '-d', type=str, default='/home2/pytorch-broad-models/COCO2017',
+                         help='path to test and training data files')
+     parser.add_argument('--epochs', '-e', type=int, default=800,
+                         help='number of epochs for training')
+@@ -50,7 +50,12 @@ def parse_args():
+     parser.add_argument('--local_rank', default=0, type=int,
+                         help='Used for multi-process training. Can either be manually set ' +
+                         'or automatically set by using \'python -m multiproc\'.')
+-
++    # 
++    parser.add_argument('--bf16-train-cpu', action='store_true',
++                        help='bf16-train-cpu')
++    parser.add_argument('--bf16-train-cuda', action='store_true',
++                        help='bf16-train-cuda')
++    
+     return parser.parse_args()
+ 
+ 
+@@ -168,18 +173,19 @@ def lr_warmup(optim, wb, iter_num, base_lr, args):
+ 			param_group['lr'] = new_lr
+ 
+ def train300_mlperf_coco(args):
++    batch_time = AverageMeter('Time', ':6.3f') #kyao
+     global torch
+     from coco import COCO
+     # Check that GPUs are actually available
+     use_cuda = not args.no_cuda and torch.cuda.is_available()
+     args.distributed = False
+-    if use_cuda:
+-        try:
+-            from apex.parallel import DistributedDataParallel as DDP
+-            if 'WORLD_SIZE' in os.environ:
+-                args.distributed = int(os.environ['WORLD_SIZE']) > 1
+-        except:
+-            raise ImportError("Please install APEX from https://github.com/nvidia/apex")
++    #if use_cuda:
++    #    try:
++    #        from apex.parallel import DistributedDataParallel as DDP
++    #        if 'WORLD_SIZE' in os.environ:
++    #            args.distributed = int(os.environ['WORLD_SIZE']) > 1
++    #    except:
++    #        raise ImportError("Please install APEX from https://github.com/nvidia/apex")
+ 
+     if args.distributed:
+         # necessary pytorch imports
+@@ -209,15 +215,14 @@ def train300_mlperf_coco(args):
+     val_trans = SSDTransformer(dboxes, (input_size, input_size), val=True)
+     ssd_print(key=mlperf_log.INPUT_SIZE, value=input_size)
+ 
+-    val_annotate = os.path.join(args.data, "annotations/instances_val2017.json")
++    val_annotate = os.path.join(args.data, "/home2/pytorch-broad-models/COCO2017/annotations/instances_val2017.json") #kyao
+     val_coco_root = os.path.join(args.data, "val2017")
+-    train_annotate = os.path.join(args.data, "annotations/instances_train2017.json")
++    train_annotate = os.path.join(args.data, "/home2/pytorch-broad-models/COCO2017/annotations/instances_train2017.json") #kyao
+     train_coco_root = os.path.join(args.data, "train2017")
+ 
+     cocoGt = COCO(annotation_file=val_annotate)
+     val_coco = COCODetection(val_coco_root, val_annotate, val_trans)
+     train_coco = COCODetection(train_coco_root, train_annotate, train_trans)
+-
+     #print("Number of labels: {}".format(train_coco.labelnum))
+ 
+     if args.distributed:
+@@ -284,7 +289,8 @@ def train300_mlperf_coco(args):
+         warmup_step = lambda iter_num, current_lr: lr_warmup(optim, wb, iter_num, current_lr, args)
+     else:
+         warmup_step = lambda iter_num, current_lr: None
+-
++        
++    end = time.time() #kyao
+     for epoch in range(args.epochs):
+         ssd_print(key=mlperf_log.TRAIN_EPOCH, value=epoch)
+         # set the epoch for the sampler
+@@ -299,9 +305,12 @@ def train300_mlperf_coco(args):
+                 param_group['lr'] = current_lr
+             ssd_print(key=mlperf_log.OPT_LR,
+                                  value=current_lr)
+-
++        count = 0
+         for nbatch, (img, img_size, bbox, label) in enumerate(train_dataloader):
+-
++            count = count + 1
++            print("count = ", count)
++            if count == 50:
++                exit()
+             if use_cuda:
+                 img = img.cuda()
+             img = Variable(img, requires_grad=True)
+@@ -312,7 +321,9 @@ def train300_mlperf_coco(args):
+                 label = label.cuda()
+             gloc, glabel = Variable(trans_bbox, requires_grad=False), \
+                            Variable(label, requires_grad=False)
+-            loss = loss_func(ploc, plabel, gloc, glabel)
++            loss = loss_func(ploc, plabel, gloc, glabel).float() # kyao
++            label = label.float() #kyao
++            print("label dt ", label.dtype) #kyao
+ 
+             if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
+ 
+@@ -322,8 +333,13 @@ def train300_mlperf_coco(args):
+             loss.backward()
+             warmup_step(iter_num, current_lr)
+             optim.step()
+-
++            
++            batch_time.update(time.time() - end) #kyao
++            end = time.time() #kyao
++            
+             iter_num += 1
++            print('latency = ', batch_time.avg / args.batch_size * 1000) #kyao
++            print('throughput =',  args.batch_size / batch_time.avg) #kyao
+ 
+         if epoch + 1 in eval_points:
+             rank = dist.get_rank() if args.distributed else args.local_rank
+@@ -349,7 +365,13 @@ def train300_mlperf_coco(args):
+                 dist.broadcast(success, 0)
+             if success[0]:
+                     return True
+-
++    
++    ### performance computation #kyao
++    latency = batch_time.avg / args.batch_size * 1000 #kyao
++    throughput = args.batch_size / batch_time.avg #kyao
++    print('training latency: %.3f ms on %d epoch'%(latency, epoch)) #kyao
++    print('training throughput: %.3f fps on %d epoch'%(throughput, epoch)) #kyao
++    
+     return False
+ 
+ def main():
+@@ -363,12 +385,44 @@ def main():
+ 
+     # start timing here
+     ssd_print(key=mlperf_log.RUN_START)
+-
+-    success = train300_mlperf_coco(args)
++    if args.bf16_train_cpu:
++        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16): #kyao
++            print("bf16 training on cpu...")
++            success = train300_mlperf_coco(args) #kyao
++    elif args.bf16_train_cuda:
++        with torch.cuda.amp.autocast(enabled=True): #kyao
++            print("bf16 training on cuda...")
++            success = train300_mlperf_coco(args) #kyao
++    else:
++        print("fp32 training...")
++        success = train300_mlperf_coco(args) #kyao
+ 
+     # end timing here
+     ssd_print(key=mlperf_log.RUN_STOP, value={"success": success})
+     ssd_print(key=mlperf_log.RUN_FINAL)
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
++        
+ if __name__ == "__main__":
+     main()
+diff --git a/single_stage_detector/ssd/utils.py b/single_stage_detector/ssd/utils.py
+index ded3ee5..f33100a 100644
+--- a/single_stage_detector/ssd/utils.py
++++ b/single_stage_detector/ssd/utils.py
+@@ -104,8 +104,8 @@ class Encoder(object):
+         labels_out = torch.zeros(self.nboxes, dtype=torch.long)
+         # print(maxloc.shape, labels_in.shape, labels_out.shape)
+         labels_out[masks] = labels_in[best_dbox_idx[masks]]
+-        bboxes_out = self.dboxes.clone()
+-        bboxes_out[masks, :] = bboxes_in[best_dbox_idx[masks], :]
++        bboxes_out = self.dboxes.clone().float() #kyao
++        bboxes_out[masks, :] = bboxes_in[best_dbox_idx[masks], :] 
+         # Transform format to xywh format
+         x, y, w, h = 0.5 * (bboxes_out[:, 0] + bboxes_out[:, 2]), \
+                      0.5 * (bboxes_out[:, 1] + bboxes_out[:, 3]), \
+@@ -254,7 +254,7 @@ class DefaultBoxes(object):
+                     cx, cy = (j + 0.5) / fk[idx], (i + 0.5) / fk[idx]
+                     self.default_boxes.append((cx, cy, w, h))
+ 
+-        self.dboxes = torch.tensor(self.default_boxes)
++        self.dboxes = torch.tensor(self.default_boxes).float()
+         self.dboxes.clamp_(min=0, max=1)
+         # For IoU calculation
+         self.dboxes_ltrb = self.dboxes.clone()
+@@ -387,6 +387,8 @@ class ToTensor(object):
+ 
+     def __call__(self, img):
+         img = torch.Tensor(np.array(img))
++        #print(img.dtype)
++        #img.to(torch.float32)
+         # Transform from HWC to CHW
+         img = img.permute(2, 0, 1)
+         return img
+@@ -507,9 +509,7 @@ class SSDTransformer(object):
+         img = self.img_trans(img).contiguous()
+         # img = img.contiguous().div(255)
+         img = self.normalize(img)
+-
+         bbox, label = self.encoder.encode(bbox, label)
+-
+         return img, img_size, bbox, label
+ 
+ 

@@ -1,0 +1,63 @@
+From 648c7ef9b1289b86e432c338df785ef74424026e Mon Sep 17 00:00:00 2001
+From: shwetaoj <shweta.ojha@intel.com>
+Date: Wed, 13 Jan 2021 15:05:04 -0800
+Subject: [PATCH] dcgan_patch
+
+---
+ main.py | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/main.py b/main.py
+index b2ea7c4..b4033d4 100644
+--- a/main.py
++++ b/main.py
+@@ -2,6 +2,7 @@ import os
+ import scipy.misc
+ import numpy as np
+ import json
++import time
+ 
+ from model import DCGAN
+ from utils import pp, visualize, to_json, show_all_variables, expand_path, timestamp
+@@ -37,6 +38,9 @@ flags.DEFINE_integer("z_dim", 100, "dimensions of z")
+ flags.DEFINE_string("z_dist", "uniform_signed", "'normal01' or 'uniform_unsigned' or uniform_signed")
+ flags.DEFINE_boolean("G_img_sum", False, "Save generator image summaries in log")
+ #flags.DEFINE_integer("generate_test_images", 100, "Number of images to generate during test. [100]")
++flags.DEFINE_boolean("test", False, "True for calculating inference, False for everything else [False]")
++flags.DEFINE_integer("num_iter", 500, "number of inference iteration")
++flags.DEFINE_integer("num_warmup", 10, "number of warmup iteration")
+ FLAGS = flags.FLAGS
+ 
+ def main(_):
+@@ -142,6 +146,28 @@ def main(_):
+       if FLAGS.visualize:
+         OPTION = 1
+         visualize(sess, dcgan, FLAGS, OPTION, FLAGS.sample_dir)
++      
++      if FLAGS.test:
++        num_iter = FLAGS.num_iter
++        num_warmup = FLAGS.num_warmup
++        total_time = 0.0
++        iter_done =0
++        OPTION = 1
++        for i in range(num_iter):
++          if i < num_warmup:
++            visualize(sess, dcgan, FLAGS, OPTION, FLAGS.sample_dir)
++            continue
++          start = time.time()
++          visualize(sess, dcgan, FLAGS, OPTION, FLAGS.sample_dir)
++          cost = time.time() - start
++          total_time += cost          
++          iter_done += 1
++          print('Iteration done: {:.2f}'.format(iter_done))
++        
++        print('Total time: {:.2f} secs'.format(total_time)) 
++        avg_time = total_time / iter_done
++        print('Average time: {:.2f} secs'.format(avg_time))
++        print('Throughput: {:.2f} samples/sec'.format(iter_done / total_time)) 
+ 
+ if __name__ == '__main__':
+   tf.app.run()
+-- 
+2.17.1
+

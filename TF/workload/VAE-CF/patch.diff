@@ -1,0 +1,189 @@
+diff --git a/run.py b/run.py
+index 2eb40a1..e791455 100644
+--- a/run.py
++++ b/run.py
+@@ -17,10 +17,10 @@ from vae.metrics.ndcg import ndcg
+               help='Enable Automatic Mixed Precision to speedup fp32 computation using tensor cores')
+ @click.option('--dataset', default=vae.config.ML_20M, help='Dataset to use')
+ @click.option('--gpu_number', default=0, help='Number of GPU used in training or validation')
+-@click.option('--number_of_gpus', default=1, help='How many GPUs to use during training or validation')
+-@click.option('--number_of_epochs', default=200, help='Number of epochs to train')
+-@click.option('--batch_size_train', default=10000)
+-@click.option('--batch_size_validation', default=10000, help='Used both for validation and testing')
++@click.option('--number_of_gpus', default=0, help='How many GPUs to use during training or validation')
++@click.option('--number_of_epochs', default=1, help='Number of epochs to train')
++@click.option('--batch_size_train', default=1)
++@click.option('--batch_size_validation', default=1, help='Used both for validation and testing')
+ @click.option('--validation_step', default=5)
+ @click.option('--warm_up_epochs', default=5, help='Number of epochs to omit during benchmark')
+ @click.option('--total_anneal_steps', default=200000, help='Number of annealing steps')
+@@ -98,7 +98,7 @@ def main(train,
+                   batch_size_validation=batch_size_validation,
+                   lam=lam,
+                   lr=lr,
+-                  device='/device:CPU')
++                  device="/cpu:0")
+     elif number_of_gpus == 1:
+         from vae.models.Mult_VAE_training import VAE
+         vae = VAE(train_data,
+@@ -138,10 +138,10 @@ def main(train,
+                   batch_size_validation=batch_size_validation,
+                   metrics=metrics,
+                   validation_step=validation_step)
+-        if number_of_gpus > 1:
+-            print("Saving is not supported with horovod multigpu yet")
+-        else:
+-            vae.save()
++        # if number_of_gpus > 1:
++        #     print("Saving is not supported with horovod multigpu yet")
++        # else:
++        #     vae.save()
+ 
+     if benchmark:
+         vae.benchmark(n_epochs=number_of_epochs,
+diff --git a/vae/load/preprocessing.py b/vae/load/preprocessing.py
+index 529df84..870d7dc 100644
+--- a/vae/load/preprocessing.py
++++ b/vae/load/preprocessing.py
+@@ -71,11 +71,7 @@ def load_and_parse_ML_20M(path, threshold=4, seed=98765, **kwargs):
+     test_data_true_file = os.path.join(CACHE_DIR, "test_data_true.npz")
+     test_data_test_file = os.path.join(CACHE_DIR, "test_data_test.npz")
+ 
+-    if (os.path.isfile(train_data_file)
+-       and os.path.isfile(vad_data_true_file
+-       and os.path.isfile((vad_data_test_file)
+-       and os.path.isfile(test_data_true_file)
+-       and os.path.isfile(test_data_test_file):
++    if (os.path.isfile(train_data_file) and os.path.isfile(vad_data_true_file) and os.path.isfile(vad_data_test_file) and os.path.isfile(test_data_true_file) and os.path.isfile(test_data_test_file)):
+ 
+         LOG.info("Already processed, skipping.")
+         return load_npz(train_data_file), \
+@@ -110,7 +106,7 @@ def load_and_parse_ML_20M(path, threshold=4, seed=98765, **kwargs):
+         # After doing this, some of the items will have less than min_uc users, but should only be a small proportion
+         if min_uc > 0:
+             usercount = get_count(tp, 'userId')
+-            tp = tp[tp['userId'].isin(usercount.index[usercount >= min_uc])]
++            tp = tp[tp['userId'].isin(usercount.index[usercount["size"] >= min_uc])]
+ 
+         # Update both usercount and itemcount after filtering
+         usercount, itemcount = get_count(tp, 'userId'), get_count(tp, 'movieId')
+@@ -160,9 +156,9 @@ def load_and_parse_ML_20M(path, threshold=4, seed=98765, **kwargs):
+     vad_plays = raw_data.loc[raw_data['userId'].isin(vd_users)]
+     vad_plays = vad_plays.loc[vad_plays['movieId'].isin(unique_sid)]
+ 
+-    vad_plays_true, vad_plays_test = split_train_testst_proportion(vad_plays)
++    vad_plays_true, vad_plays_test = split_train_test_proportion(vad_plays)
+ 
+-    test_plays = raw_data.loc[raw_data['userId'].isin(te_users)]
++    test_plays = raw_data.loc[raw_data['userId'].isin(test_users)]
+     test_plays = test_plays.loc[test_plays['movieId'].isin(unique_sid)]
+ 
+     test_plays_true, test_plays_test = split_train_test_proportion(test_plays)
+diff --git a/vae/models/Mult_VAE_training.py b/vae/models/Mult_VAE_training.py
+index 5dc68db..8f68cf7 100644
+--- a/vae/models/Mult_VAE_training.py
++++ b/vae/models/Mult_VAE_training.py
+@@ -43,9 +43,9 @@ class VAE:
+             raise Exception("encoder_dims is mandatory")
+         if decoder_dims is None:
+             decoder_dims = encoder_dims[::-1]
+-        for i in encoder_dims + decoder_dims + [batch_size_train, batch_size_validation]:
+-            if i != round_8(i):
+-                raise Exception("all dims and batch sizes should be divisible by 8")
++        # for i in encoder_dims + decoder_dims + [batch_size_train, batch_size_validation]:
++        #     if i != round_8(i):
++        #         raise Exception("all dims and batch sizes should be divisible by 8")
+ 
+         self.metrics_history = None
+         self.batch_size_train = batch_size_train
+@@ -89,30 +89,59 @@ class VAE:
+         for epoch in range(1, n_epochs + 1):
+ 
+             self.log_which_epoch(epoch, n_epochs)
+-            init_time = time.time()
+-
+-            for _ in range(self.n_batch_per_train):
++            # init_time = time.time()
++            for _ in range(200):
+                 self.session.run(self.optimizer)
+ 
+-            training_duration = time.time() - init_time
+-            self.time_elapsed_training_history.append(training_duration)
+-            LOG.info("Train time:\t{}".format(training_duration))
+-
+-            if epoch % validation_step == 0 or epoch == n_epochs:
+-                init_time = time.time()
+-                metrics_scores = self.test(validation_data_input,
+-                                           validation_data_true,
+-                                           metrics)
+-
+-                for name, score in metrics_scores.items():
+-                    self.metrics_history[name].append(score)
+-
+-                validation_duration = time.time() - init_time
+-                self.time_elapsed_validation_history.append(validation_duration)
+-                LOG.info("Valid time:\t{}".format(validation_duration))
+-                self.log_metrics(epoch, metrics_scores, n_epochs)
+-
+-        self.log_training_time()
++            # training_duration = time.time() - init_time
++            # self.time_elapsed_training_history.append(training_duration)
++            # LOG.info("Train time:\t{}".format(training_duration))
++            # from tensorflow.python.framework import graph_util
++            # constant_graph = graph_util.convert_variables_to_constants(self.session, self.session.graph_def, ['private_vae_graph/sequential_1/decoder_20056/BiasAdd'])
++            # # with tf.gfile.FastGFile('/home/jialew/tensorflow_enable/VAE_CF/VAE-CF/export_dir/vace.pb', mode='wb') as f:
++            # #         f.write(constant_graph.SerializeToString())
++            # tf.compat.v1.train.write_graph(constant_graph ,'/home/jialew/tensorflow_enable/VAE_CF/VAE-CF/export_dir/','vace.pbtxt',True)
++            # if epoch % validation_step == 0 or epoch == n_epochs:
++            #    init_time = time.time()
++
++            #    metrics_scores = self.test(validation_data_input,
++            #                               validation_data_true,
++            #                               metrics)
++
++             #   for name, score in metrics_scores.items():
++             #       self.metrics_history[name].append(score)
++
++              #  validation_duration = time.time() - init_time
++              #  self.time_elapsed_validation_history.append(validation_duration)
++              #  LOG.info("Valid time:\t{}".format(validation_duration))
++              #  self.log_metrics(epoch, metrics_scores, n_epochs)
++
++            total_time = 0.0
++            reps_done = 0
++            gen= self.batch_iterator_val(validation_data_input,
++                                            validation_data_true)
++            warm_up=0
++            for idxs, vals, X_true in gen():
++                if warm_up<10:
++                    pred_val = self.session.run(
++                        self.logits_validation,
++                        feed_dict={self.inputs_validation: (idxs, vals)})
++                else:
++                    start = time.time()
++                    pred_val = self.session.run(
++                        self.logits_validation, feed_dict={self.inputs_validation: (idxs, vals)})
++                    end = time.time()
++                    delta = end - start
++                    total_time += delta
++                    reps_done += 1
++                warm_up+=1
++            print(reps_done)
++            avg_time = total_time / reps_done
++            latency = avg_time * 1000
++            throughput = 1.0 / avg_time
++            print("Latency: {:.0f} ms".format(latency))
++            print("Throughput: {:.2f} fps".format(throughput))
++        # self.log_training_time()
+ 
+     def test(
+             self,
+@@ -263,7 +292,7 @@ class VAE:
+     def _build_graph(self):
+         self.vae = _VAEGraph(self.encoder_dims, self.decoder_dims)
+ 
+-        self.inputs_validation = tf.sparse.placeholder(
++        self.inputs_validation = tf.sparse.placeholder(name="input",
+             dtype=tf.float32,
+             shape=np.array([self.batch_size_validation, self.vae.input_dim], dtype=np.int32))
+         self.inputs_query = tf.sparse.placeholder(

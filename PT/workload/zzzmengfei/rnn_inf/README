@@ -1,0 +1,24 @@
+#Deps
+torch
+torchvision
+pip install -r requirements.txt
+
+#Dataset
+/home2/pytorch-broad-models/RNN-T/dataset/LibriSpeech/
+
+#checkpoint
+/home2/pytorch-broad-models/RNN-T/checkpoint/rnnt.pt
+
+#patch
+PT/workload/RNN-T_inf/RNN-T.patch
+
+#command
+git clone https://gitlab.devtools.intel.com/mlp-broadproduct-ia-benchmarking/extended-broad-product/-/tree/master
+cd extended-broad-product
+git submodule update --init --recursive PT/rnn_inf
+cd PT/rnn_inf
+git apply ../workload/RNN-T_inf/RNN-T.patch
+python v0.7/speech_recognition/rnnt/pytorch/inference.py --ipex --dataset_dir /home2/pytorch-broad-models/RNN-T/dataset/LibriSpeech/ --val_manifest /home2/pytorch-broad-models/RNN-T/dataset/LibriSpeech/librispeech-dev-clean-wav.json --model_toml v0.7/speech_recognition/rnnt/pytorch/configs/rnnt.toml --ckpt /home2/pytorch-broad-models/RNN-T/checkpoint/rnnt.pt
+
+#Broad-Product Test
+bash ../workload/RNN-T_inf/run.sh --cores_per_instance=28 --dataset=/home2/pytorch-broad-models/RNN-T/dataset/LibriSpeech/ --checkpoint=/home2/pytorch-broad-models/RNN-T/checkpoint/rnnt.pt --iter=20

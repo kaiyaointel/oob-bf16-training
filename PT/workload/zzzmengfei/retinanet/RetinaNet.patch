@@ -1,0 +1,308 @@
+diff --git a/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml b/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml
+index d50fb86..f7fc54f 100644
+--- a/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml
++++ b/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml
+@@ -1,6 +1,6 @@
+ _BASE_: "../Base-RCNN-FPN.yaml"
+ MODEL:
+-  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
++  WEIGHTS: "./R-50.pkl"
+   MASK_ON: True
+   RESNETS:
+     DEPTH: 50
+diff --git a/detectron2/config/defaults.py b/detectron2/config/defaults.py
+index fe492a5..96240a7 100644
+--- a/detectron2/config/defaults.py
++++ b/detectron2/config/defaults.py
+@@ -17,6 +17,12 @@ from .config import CfgNode as CN
+ 
+ _C = CN()
+ 
++# BF16
++_C.BF16 = False
++# IPEX
++_C.IPEX = False
++_C.NHWC = True
++
+ # The version number, to upgrade from old configs to new ones if any
+ # changes happen. It's recommended to keep a VERSION in your config file.
+ _C.VERSION = 2
+@@ -25,7 +31,7 @@ _C.MODEL = CN()
+ _C.MODEL.LOAD_PROPOSALS = False
+ _C.MODEL.MASK_ON = False
+ _C.MODEL.KEYPOINT_ON = False
+-_C.MODEL.DEVICE = "cuda"
++_C.MODEL.DEVICE = "cpu"
+ _C.MODEL.META_ARCHITECTURE = "GeneralizedRCNN"
+ 
+ # Path (possibly with schema like catalog:// or detectron2://) to a checkpoint file
+@@ -146,6 +152,7 @@ _C.MODEL.FPN.NORM = ""
+ 
+ # Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
+ _C.MODEL.FPN.FUSE_TYPE = "sum"
++_C.arch= ""
+ 
+ 
+ # ---------------------------------------------------------------------------- #
+diff --git a/detectron2/engine/defaults.py b/detectron2/engine/defaults.py
+index 0ed1b28..e677842 100644
+--- a/detectron2/engine/defaults.py
++++ b/detectron2/engine/defaults.py
+@@ -60,7 +60,13 @@ def default_argument_parser():
+         help="whether to attempt to resume from the checkpoint directory",
+     )
+     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
++    parser.add_argument("--profile", action="store_true", help="profile")
+     parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
++    parser.add_argument("--arch", type=str, default='RetinaNet')
++    parser.add_argument("--channels-last", type=int, default=0)
++    parser.add_argument("--num-warmup", type=int, default=5)
++    parser.add_argument("--num-iters", type=int, default=0)
++    parser.add_argument("--precision", type=str, default='float32')
+     parser.add_argument("--num-machines", type=int, default=1)
+     parser.add_argument(
+         "--machine-rank", type=int, default=0, help="the rank of this machine (unique per machine)"
+@@ -395,6 +401,12 @@ class DefaultTrainer(SimpleTrainer):
+         Overwrite it if you'd like a different model.
+         """
+         model = build_model(cfg)
++        # Cannot re-assign modules in a ScriptModule with non-scripted module---FrozenBatchNorm2d
++        if cfg.IPEX:
++            import intel_pytorch_extension as ipex
++            #model = model.to(ipex.DEVICE)
++            from .recursive_inf import recursive, mkldnn_forward_pre_hook, mkldnn_forward_hook
++            recursive(model, mkldnn_forward_pre_hook, mkldnn_forward_hook)
+         logger = logging.getLogger(__name__)
+         logger.info("Model:\n{}".format(model))
+         return model
+@@ -494,7 +506,15 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
+                     )
+                     results[dataset_name] = {}
+                     continue
+-            results_i = inference_on_dataset(model, data_loader, evaluator)
++            if cfg.IPEX:
++                import intel_pytorch_extension as ipex
++                model = model.to(ipex.DEVICE)
++            elif cfg.channels_last:
++                model_oob = model
++                model_oob = model_oob.to(memory_format=torch.channels_last)
++                model = model_oob
++                print("---- Use channels last format.")
++            results_i = inference_on_dataset(cfg, model, data_loader, evaluator)
+             results[dataset_name] = results_i
+             if comm.is_main_process():
+                 assert isinstance(
+diff --git a/detectron2/evaluation/evaluator.py b/detectron2/evaluation/evaluator.py
+index 8650254..653da90 100644
+--- a/detectron2/evaluation/evaluator.py
++++ b/detectron2/evaluation/evaluator.py
+@@ -1,6 +1,7 @@
+ # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+ import datetime
+ import logging
++import os
+ import time
+ from collections import OrderedDict
+ from contextlib import contextmanager
+@@ -80,7 +81,27 @@ class DatasetEvaluators(DatasetEvaluator):
+         return results
+ 
+ 
+-def inference_on_dataset(model, data_loader, evaluator):
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
++
++def inference_on_dataset(cfg, model, data_loader, evaluator):
+     """
+     Run model on the data_loader and evaluate the metrics with evaluator.
+     Also benchmark the inference speed of `model.forward` accurately.
+@@ -110,17 +131,33 @@ def inference_on_dataset(model, data_loader, evaluator):
+         evaluator = DatasetEvaluators([])
+     evaluator.reset()
+ 
+-    num_warmup = min(5, total - 1)
++    num_warmup = cfg.num_warmup
++    num_iters = cfg.num_iters
+     start_time = time.perf_counter()
+     total_compute_time = 0
+     with inference_context(model), torch.no_grad():
+         for idx, inputs in enumerate(data_loader):
++            if num_iters != 0 and idx > num_iters:
++                break
+             if idx == num_warmup:
+                 start_time = time.perf_counter()
+                 total_compute_time = 0
+ 
+             start_compute_time = time.perf_counter()
+-            outputs = model(inputs)
++            if cfg.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if cfg.precision == 'bfloat16':
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            outputs = model(inputs)
++                    else:
++                        outputs = model(inputs)
++            else:
++                if cfg.precision == 'bfloat16':
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        outputs = model(inputs)
++                else:
++                    outputs = model(inputs)
++
+             if torch.cuda.is_available():
+                 torch.cuda.synchronize()
+             total_compute_time += time.perf_counter() - start_compute_time
+@@ -143,6 +180,19 @@ def inference_on_dataset(model, data_loader, evaluator):
+     total_time = time.perf_counter() - start_time
+     total_time_str = str(datetime.timedelta(seconds=total_time))
+     # NOTE this format is parsed by grep
++
++    if cfg.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    "retinanet" + str(idx) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
+     logger.info(
+         "Total inference time: {} ({:.6f} s / img per device, on {} devices)".format(
+             total_time_str, total_time / (total - num_warmup), num_devices
+@@ -154,6 +204,11 @@ def inference_on_dataset(model, data_loader, evaluator):
+             total_compute_time_str, total_compute_time / (total - num_warmup), num_devices
+         )
+     )
++    logger.info(
++        "inference Throughput: {:.2f} imgs/s, on {} devices)".format(
++            (total - num_warmup) / total_compute_time, num_devices
++        )
++    )
+ 
+     results = evaluator.evaluate()
+     # An evaluator may return None when not in main process.
+diff --git a/detectron2/layers/wrappers.py b/detectron2/layers/wrappers.py
+index 7cd6442..0f84e34 100644
+--- a/detectron2/layers/wrappers.py
++++ b/detectron2/layers/wrappers.py
+@@ -11,7 +11,7 @@ is implemented
+ import math
+ import torch
+ from torch.nn.modules.utils import _ntuple
+-
++from detectron2.config import get_cfg
+ TORCH_VERSION = tuple(int(x) for x in torch.__version__.split(".")[:2])
+ 
+ 
+@@ -58,6 +58,7 @@ class Conv2d(torch.nn.Conv2d):
+ 
+         self.norm = norm
+         self.activation = activation
++        self.cfg = get_cfg()
+ 
+     def forward(self, x):
+         if x.numel() == 0 and self.training:
+@@ -89,8 +90,12 @@ class Conv2d(torch.nn.Conv2d):
+                 return empty + _dummy
+             else:
+                 return empty
+-
+-        x = super().forward(x)
++        #x = super().forward(x)
++        if self.cfg.IPEX:
++            import intel_pytorch_extension as ipex
++            x = super().forward(x.to(ipex.DEVICE))
++        else:
++            x = super().forward(x)
+         if self.norm is not None:
+             x = self.norm(x)
+         if self.activation is not None:
+diff --git a/detectron2/modeling/proposal_generator/rpn.py b/detectron2/modeling/proposal_generator/rpn.py
+index bbb3dc5..335b4d8 100644
+--- a/detectron2/modeling/proposal_generator/rpn.py
++++ b/detectron2/modeling/proposal_generator/rpn.py
+@@ -12,6 +12,7 @@ from ..box_regression import Box2BoxTransform
+ from ..matcher import Matcher
+ from .build import PROPOSAL_GENERATOR_REGISTRY
+ from .rpn_outputs import RPNOutputs, find_top_rpn_proposals
++from detectron2.config import get_cfg
+ 
+ RPN_HEAD_REGISTRY = Registry("RPN_HEAD")
+ """
+@@ -42,6 +43,7 @@ class StandardRPNHead(nn.Module):
+ 
+     def __init__(self, cfg, input_shape: List[ShapeSpec]):
+         super().__init__()
++        self.cfg = get_cfg()
+ 
+         # Standard RPN is shared across levels:
+         in_channels = [s.channels for s in input_shape]
+@@ -79,7 +81,13 @@ class StandardRPNHead(nn.Module):
+         pred_objectness_logits = []
+         pred_anchor_deltas = []
+         for x in features:
+-            t = F.relu(self.conv(x))
++            if self.cfg.IPEX:
++               import intel_pytorch_extension as ipex
++               x = x.to(ipex.DEVICE)
++               t = F.relu(self.conv(x))
++               t= t.to(ipex.DEVICE)
++            else:
++               t = F.relu(self.conv(x))
+             pred_objectness_logits.append(self.objectness_logits(t))
+             pred_anchor_deltas.append(self.anchor_deltas(t))
+         return pred_objectness_logits, pred_anchor_deltas
+diff --git a/tools/train_net.py b/tools/train_net.py
+index 2176b88..c4bfd6c 100755
+--- a/tools/train_net.py
++++ b/tools/train_net.py
+@@ -117,7 +117,7 @@ def setup(args):
+     cfg = get_cfg()
+     cfg.merge_from_file(args.config_file)
+     cfg.merge_from_list(args.opts)
+-    cfg.freeze()
++    # cfg.freeze()
+     default_setup(cfg, args)
+     return cfg
+ 
+@@ -125,8 +125,20 @@ def setup(args):
+ def main(args):
+     cfg = setup(args)
+ 
++    if cfg.IPEX:
++        import intel_pytorch_extension as ipex
++
++    cfg.eval_only = False
++    cfg.profile = args.profile
++    cfg.channels_last = args.channels_last
++    cfg.precision = args.precision
++    cfg.num_warmup = args.num_warmup
++    cfg.num_iters = args.num_iters
+     if args.eval_only:
++        cfg.eval_only = True
+         model = Trainer.build_model(cfg)
++        if cfg.IPEX:
++            model.to(ipex.DEVICE)
+         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+             cfg.MODEL.WEIGHTS, resume=args.resume
+         )

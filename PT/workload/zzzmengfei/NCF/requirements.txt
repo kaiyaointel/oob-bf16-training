@@ -1,0 +1,4 @@
+scipy
+numpy_indexed
+tqdm
+mlperf_compliance

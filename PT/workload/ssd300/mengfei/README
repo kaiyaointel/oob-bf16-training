@@ -1,0 +1,11 @@
+#Deps
+pip install -r requirements.txt
+
+#Test Prepare
+cd ../../ssd300/single_stage_detector/ssd
+git apply ../workload/SSD300/ssd.patch
+
+#Broad-Product test (enable ipex as default)
+bash ../workload/SSD300/run.sh
+
+

@@ -1,0 +1,267 @@
+diff --git a/run.py b/run.py
+index 0779413..f9c9b5b 100644
+--- a/run.py
++++ b/run.py
+@@ -6,6 +6,7 @@ import torch
+ import utils
+ import cv2
+ import argparse
++import time
+ 
+ from torchvision.transforms import Compose
+ from midas.midas_net import MidasNet
+@@ -24,7 +25,11 @@ def run(input_path, output_path, model_path, model_type="large", optimize=True):
+     print("initialize")
+ 
+     # select device
+-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        device = ipex.DEVICE
++    else:
++        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+     print("device: %s" % device)
+ 
+     # load network
+@@ -32,7 +37,8 @@ def run(input_path, output_path, model_path, model_type="large", optimize=True):
+         model = MidasNet(model_path, non_negative=True)
+         net_w, net_h = 384, 384
+     elif model_type == "small":
+-        model = MidasNet_small(model_path, features=64, backbone="efficientnet_lite3", exportable=True, non_negative=True, blocks={'expand': True})
++        model = MidasNet_small(model_path, features=64, backbone="efficientnet_lite3",
++                exportable=True, non_negative=True, blocks={'expand': True})
+         net_w, net_h = 256, 256
+     else:
+         print(f"model_type '{model_type}' not implemented, use: --model_type large")
+@@ -55,8 +61,24 @@ def run(input_path, output_path, model_path, model_type="large", optimize=True):
+     )
+ 
+     model.eval()
+-    
+-    if optimize==True:
++
++    if args.channels_last:
++        model_oob = model
++        model_oob = model_oob.to(memory_format=torch.channels_last)
++        model = model_oob
++        print('---- Use channels last format.')
++    else:
++        model.to(device)
++    if args.ipex:
++        print("using ipex model to do inference\n")
++        if args.precision == "bfloat16":
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print("running bf16 evalation step\n")
++        else:
++            print("running fp32 evalation step\n")
++
++    if optimize == True:
++        print("running jit fusion path\n")
+         rand_example = torch.rand(1, 3, net_h, net_w)
+         model(rand_example)
+         traced_script_module = torch.jit.trace(model, rand_example)
+@@ -66,6 +88,30 @@ def run(input_path, output_path, model_path, model_type="large", optimize=True):
+             model = model.to(memory_format=torch.channels_last)  
+             model = model.half()
+ 
++    if args.trace:
++        from torch.fx import symbolic_trace
++        traced_dir = str(os.path.dirname(os.path.realpath(__file__))) + '/traced_model/'
++        if not os.path.exists(traced_dir):
++            os.makedirs(traced_dir)
++        traced_path = traced_dir + args.arch + "_fx_traced_model.pth"
++        # fx
++        try:
++            fx_traced = symbolic_trace(model)
++            torch.save(fx_traced, traced_path)
++        except:
++            print("WARN: {} don't support FX trace.".format(args.arch))
++        # jit
++        traced_path = traced_dir + args.arch + "_jit_traced_model.pth"
++        try:
++            q_model = torch.jit.script(model_.eval())
++            q_model.save(traced_path)
++        except:
++            try:
++                q_model = torch.jit.trace(model.eval(), images)
++                q_model.save(traced_path)
++            except:
++                print("WARN: {} don't support JIT script/trace.".format(args.arch))
++
+     model.to(device)
+ 
+     # get input
+@@ -77,7 +123,10 @@ def run(input_path, output_path, model_path, model_type="large", optimize=True):
+ 
+     print("start processing")
+ 
++    all_time = 0
+     for ind, img_name in enumerate(img_names):
++        if args.num_iterations != 0 and ind > args.num_iterations:
++            break
+ 
+         print("  processing {} ({}/{})".format(img_name, ind + 1, num_images))
+ 
+@@ -88,39 +137,117 @@ def run(input_path, output_path, model_path, model_type="large", optimize=True):
+ 
+         # compute
+         with torch.no_grad():
+-            sample = torch.from_numpy(img_input).to(device).unsqueeze(0)
+-            if optimize==True and device == torch.device("cuda"):
+-                sample = sample.to(memory_format=torch.channels_last)  
+-                sample = sample.half()
+-            prediction = model.forward(sample)
+-            prediction = (
+-                torch.nn.functional.interpolate(
+-                    prediction.unsqueeze(1),
+-                    size=img.shape[:2],
+-                    mode="bicubic",
+-                    align_corners=False,
++            if args.ipex:
++                sample = torch.from_numpy(img_input).to(device).unsqueeze(0)
++                if ind >= args.warmup_iterations:
++                    end = time.time()
++                if args.profile:
++                    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                        prediction = model.forward(sample)
++                else:
++                    prediction = model.forward(sample)
++
++
++                #prediction = model.forward(sample)
++                prediction = (
++                    torch.nn.functional.interpolate(
++                        prediction.unsqueeze(1),
++                        size=img.shape[:2],
++                        mode="bicubic",
++                        align_corners=False,
++                    )
++                    .squeeze()
++                    .cpu()
++                    .numpy()
+                 )
+-                .squeeze()
+-                .cpu()
+-                .numpy()
+-            )
+ 
+-        # output
+-        filename = os.path.join(
+-            output_path, os.path.splitext(os.path.basename(img_name))[0]
+-        )
+-        utils.write_depth(filename, prediction, bits=2)
++                if ind >= args.warmup_iterations:
++                    all_time += time.time() - end
++            else:
++                sample = torch.from_numpy(img_input).to(device).unsqueeze(0)
++                if optimize == True and device == torch.device("cuda"):
++                    sample = sample.to(memory_format=torch.channels_last)
++                    sample = sample.half()
++                if ind >= args.warmup_iterations:
++                    end = time.time()
++                if args.profile:
++                    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                        if args.precision == "bfloat16":
++                            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                                prediction = model.forward(sample)
++                        else:
++                            prediction = model.forward(sample)
++                else:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            prediction = model.forward(sample)
++                    else:
++                        prediction = model.forward(sample)
+ 
++                #prediction = model.forward(sample)
++                prediction = (
++                    torch.nn.functional.interpolate(
++                        prediction.unsqueeze(1),
++                        size=img.shape[:2],
++                        mode="bicubic",
++                        align_corners=False,
++                    )
++                    .squeeze()
++                    .cpu()
++                    .numpy()
++                )
++                if ind >= args.warmup_iterations:
++                    all_time += time.time() - end
++
++            # output
++            filename = os.path.join(
++                output_path, os.path.splitext(os.path.basename(img_name))[0]
++            )
++            utils.write_depth(filename, prediction, bits=2)
++
++    print('Throughput is: %f imgs/s' % (num_images / all_time))
+     print("finished")
+ 
++    #
++    if args.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    args.arch + str(ind) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
+ 
+ if __name__ == "__main__":
+     parser = argparse.ArgumentParser()
+ 
+-    parser.add_argument('-i', '--input_path', 
+-        default='input',
+-        help='folder with input images'
+-    )
++    parser.add_argument('-i', '--input_path',
++                        default='input',
++                        help='folder with input images'
++                        )
+ 
+     parser.add_argument('-o', '--output_path', 
+         default='output',
+@@ -139,7 +266,19 @@ if __name__ == "__main__":
+ 
+     parser.add_argument('--optimize', dest='optimize', action='store_true')
+     parser.add_argument('--no-optimize', dest='optimize', action='store_false')
+-    parser.set_defaults(optimize=True)
++    parser.add_argument('--profile', action='store_true',help='help')
++    parser.add_argument('--trace', action='store_true',help='help')
++    parser.add_argument('--arch', type=str, help='model name')
++    parser.add_argument('--ipex', action='store_true', default=False,
++                        help='use intel pytorch extension')
++    parser.add_argument('--precision', type=str, default="float32",
++                        help='precision, float32, bfloat16')
++    parser.add_argument('-w', '--warmup_iterations', default=5, type=int, metavar='N',
++                        help='number of warmup iterations to run')
++    parser.add_argument('--num_iterations', default=0, type=int, metavar='N',
++                        help='number of iterations to run')
++    parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++    parser.set_defaults(optimize=False)
+ 
+     args = parser.parse_args()
+ 

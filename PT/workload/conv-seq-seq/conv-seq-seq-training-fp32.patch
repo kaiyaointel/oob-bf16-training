@@ -1,0 +1,97 @@
+diff --git a/fairseq_cli/train.py b/fairseq_cli/train.py
+index 21771ff..ec5947c 100644
+--- a/fairseq_cli/train.py
++++ b/fairseq_cli/train.py
+@@ -21,6 +21,7 @@ from fairseq.data import iterators
+ from fairseq.logging import meters, metrics, progress_bar
+ from fairseq.trainer import Trainer
+ 
++import time #kyao
+ 
+ logging.basicConfig(
+     format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+@@ -144,6 +145,7 @@ def should_stop_early(args, valid_loss):
+ 
+ @metrics.aggregate('train')
+ def train(args, trainer, task, epoch_itr):
++    batch_time = AverageMeter('Time', ':6.3f') #kyao
+     """Train the model for one epoch."""
+     # Initialize data iterator
+     itr = epoch_itr.next_epoch_itr(
+@@ -172,11 +174,16 @@ def train(args, trainer, task, epoch_itr):
+ 
+     valid_subsets = args.valid_subset.split(',')
+     max_update = args.max_update or math.inf
++    end = time.time() #kyao
+     for samples in progress:
+         with metrics.aggregate('train_inner'):
+-            log_output = trainer.train_step(samples)
+-            if log_output is None:  # OOM, overflow, ...
+-                continue
++            with torch.cpu.amp.autocast(enabled=False):
++                print('is training with bf16 on cpu...')
++                log_output = trainer.train_step(samples)
++                if log_output is None:  # OOM, overflow, ...
++                    continue
++        batch_time.update(time.time() - end) #kyao
++        end = time.time() #kyao
+ 
+         # log mid-epoch stats
+         stats = get_training_stats(metrics.get_smoothed_values('train_inner'))
+@@ -194,12 +201,25 @@ def train(args, trainer, task, epoch_itr):
+             and num_updates % args.save_interval_updates == 0
+             and num_updates > 0
+         ):
+-            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
++            with torch.cpu.amp.autocast(enabled=False):
++                valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
+             checkpoint_utils.save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
+ 
+         if num_updates >= max_update:
+             break
+-
++            
++        ### performance computation #kyao
++        latency = batch_time.avg / args.max_sentences * 1000 #kyao
++        throughput = args.max_sentences / batch_time.avg #kyao
++        print('training latency: %3.0f ms on %d epoch'%(latency, epoch_itr.epoch)) #kyao
++        print('training throughput: %3.0f fps on %d epoch'%(throughput, epoch_itr.epoch)) #kyao
++    
++    ### performance computation #kyao
++    latency = batch_time.avg / args.max_sentences * 1000 #kyao
++    throughput = args.max_sentences / batch_time.avg #kyao
++    print('training latency: %3.0f ms on %d epoch'%(latency, epoch_itr.epoch)) #kyao
++    print('training throughput: %3.0f fps on %d epoch'%(throughput, epoch_itr.epoch)) #kyao
++    
+     # log end-of-epoch stats
+     stats = get_training_stats(metrics.get_smoothed_values('train'))
+     progress.print(stats, tag='train', step=num_updates)
+@@ -321,6 +341,28 @@ def cli_main(modify_parser=None):
+         # single GPU training
+         main(args)
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
+ 
+ if __name__ == '__main__':
+     cli_main()

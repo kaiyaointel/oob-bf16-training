@@ -1,0 +1,265 @@
+diff --git a/codes/LSTM/BiConvLSTM.py b/codes/LSTM/BiConvLSTM.py
+index 79583ec..5fd90b8 100644
+--- a/codes/LSTM/BiConvLSTM.py
++++ b/codes/LSTM/BiConvLSTM.py
+@@ -1,7 +1,8 @@
+ import torch.nn as nn
+ from torch.autograd import Variable
+ import torch
+-torch.cuda.set_device(0)
++if torch.cuda.is_available():
++    torch.cuda.set_device(0)
+ 
+ class BiConvLSTMCell(nn.Module):
+ 
+@@ -145,8 +146,8 @@ class BiConvLSTM(nn.Module):
+                 init_states.append((Variable(torch.zeros(batch_size, self.hidden_dim[i], self.height, self.width).cuda()).cuda(),
+                                     Variable(torch.zeros(batch_size, self.hidden_dim[i], self.height, self.width).cuda()).cuda()))
+             else:
+-                init_states.append((Variable(torch.zeros(batch_size, self.hidden_dim[i], self.height, self.width).cuda()).cuda(),
+-                                    Variable(torch.zeros(batch_size, self.hidden_dim[i], self.height, self.width).cuda()).cuda()))
++                init_states.append((Variable(torch.zeros(batch_size, self.hidden_dim[i], self.height, self.width)),
++                                    Variable(torch.zeros(batch_size, self.hidden_dim[i], self.height, self.width))))
+         return init_states
+ 
+     @staticmethod
+diff --git a/codes/LSTM/functional.py b/codes/LSTM/functional.py
+index 52fd30a..edd343b 100644
+--- a/codes/LSTM/functional.py
++++ b/codes/LSTM/functional.py
+@@ -2,7 +2,8 @@ from functools import partial
+ 
+ import torch
+ import torch.nn.functional as F
+-from torch.nn._functions.thnn import rnnFusedPointwise as fusedBackend
++if torch.cuda.is_available():
++    from torch.nn._functions.thnn import rnnFusedPointwise as fusedBackend
+ 
+ from .utils import _single, _pair, _triple
+ 
+diff --git a/codes/MGANet_test_AI37.py b/codes/MGANet_test_AI37.py
+index a85ab58..2b3220f 100644
+--- a/codes/MGANet_test_AI37.py
++++ b/codes/MGANet_test_AI37.py
+@@ -13,6 +13,13 @@ import  Net.MGANet as MGANet
+ 
+ import torch
+ import copy
++try:
++    import intel_pytorch_extension as ipex
++    TEST_IPEX=True
++except:
++    TEST_IPEX=False
++
++
+ def yuv_import(filename, dims ,startfrm,numframe):
+     fp = open(filename, 'rb')
+     frame_size = np.prod(dims) * 3 / 2
+@@ -79,7 +86,7 @@ def get_data(one_filename,video_index,num_frame,startfrm_position):
+                 mask_37_filename_Y, mask_37_filename_U, mask_37_filename_V = yuv_import(filename=file_name, dims=dims,startfrm=startfrm_position, numframe=num_frame)
+                 data_Y.append(mask_37_filename_Y)
+         if i == 2:
+-            label_37_filename = np.sort(glob.glob('../test_yuv/label/' + '*.yuv'))
++            label_37_filename = np.sort(glob.glob('../testing_set/label/' + '*.yuv'))
+             label_37_filename_length = len(label_37_filename)
+             for i_2 in range(video_index,video_index+1):
+                 file_name = label_37_filename[i_2]
+@@ -115,6 +122,7 @@ def image_test(one_filename,net_G,patch_size=[128,128],f_txt=None,opt=None):
+     ave_psnr_predict  =0.
+     ave_psnr_data =0.
+     video_num=opt.video_nums
++    total_time = 0
+     for video_index in range(video_num):
+         data_37_filename = np.sort(glob.glob(one_filename[0]+'/*.yuv'))
+         data_Y = get_data(one_filename,video_index=video_index,num_frame=opt.frame_nums+5,startfrm_position=opt.startfrm_position)
+@@ -124,23 +132,61 @@ def image_test(one_filename,net_G,patch_size=[128,128],f_txt=None,opt=None):
+         psnr_pre_gt_sum=0
+         psnr_data_gt_sum=0
+         nums =opt.frame_nums
+-        for itr in range(0, nums):           
+-            data_pre, data_cur, data_aft, mask, label, start = test_batch(data_Y=data_Y, start=start, batch_size=1)
++        for itr in range(0, nums):
++            data_pre, data_cur, data_aft, mask, label, start = test_batch(data_Y=data_Y, start=start, batch_size=opt.batch_size)
+ 
+             height = data_pre.shape[2]
+             width = data_pre.shape[3]
+            
+-            data_pre_value_patch = torch.from_numpy(data_pre).float().cuda()
+-
+-            data_cur_value_patch = torch.from_numpy(data_cur).float().cuda()
+-
+-            data_aft_value_patch = torch.from_numpy(data_aft).float().cuda()
+-
+-            data_mask_value_patch = torch.from_numpy(mask).float().cuda()
++            if opt.cuda:
++                data_pre_value_patch = torch.from_numpy(data_pre).float().cuda()
++                data_cur_value_patch = torch.from_numpy(data_cur).float().cuda()
++                data_aft_value_patch = torch.from_numpy(data_aft).float().cuda()
++                data_mask_value_patch = torch.from_numpy(mask).float().cuda()
++            elif opt.ipex:
++                data_pre_value_patch = torch.from_numpy(data_pre).float().to(ipex.DEVICE)
++                data_cur_value_patch = torch.from_numpy(data_cur).float().to(ipex.DEVICE)
++                data_aft_value_patch = torch.from_numpy(data_aft).float().to(ipex.DEVICE)
++                data_mask_value_patch = torch.from_numpy(mask).float().to(ipex.DEVICE)
++            else:
++                data_pre_value_patch = torch.from_numpy(data_pre).float()
++                data_cur_value_patch = torch.from_numpy(data_cur).float()
++                data_aft_value_patch = torch.from_numpy(data_aft).float()
++                data_mask_value_patch = torch.from_numpy(mask).float()
++
++            if opt.channels_last:
++                oob_pre = data_pre_value_patch
++                oob_cur = data_cur_value_patch
++                oob_aft = data_aft_value_patch
++                oob_mask = data_mask_value_patch
++                oob_pre = oob_pre.to(memory_format=torch.channels_last)
++                oob_cur = oob_cur.to(memory_format=torch.channels_last)
++                oob_aft = oob_aft.to(memory_format=torch.channels_last)
++                oob_mask = oob_mask.to(memory_format=torch.channels_last)
++                data_pre_value_patch = oob_pre
++                data_cur_value_patch = oob_cur
++                data_aft_value_patch = oob_aft
++                data_mask_value_patch = oob_mask
+            
+             start_time = time.time()
+-            fake_image = net_G(data_pre_value_patch,data_cur_value_patch,data_aft_value_patch,data_mask_value_patch)
++            if opt.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if opt.precision =='bfloat16':
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            fake_image = net_G(data_pre_value_patch,data_cur_value_patch,data_aft_value_patch,data_mask_value_patch)
++                    else:
++                        fake_image = net_G(data_pre_value_patch,data_cur_value_patch,data_aft_value_patch,data_mask_value_patch)
++            else:
++                if opt.precision =='bfloat16':
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        fake_image = net_G(data_pre_value_patch,data_cur_value_patch,data_aft_value_patch,data_mask_value_patch)
++                else:
++                    fake_image = net_G(data_pre_value_patch,data_cur_value_patch,data_aft_value_patch,data_mask_value_patch)
++
++            #fake_image = net_G(data_pre_value_patch,data_cur_value_patch,data_aft_value_patch,data_mask_value_patch)
+             end_time=time.time()
++            if itr > 0 or video_index > 0:
++                total_time += end_time - start_time
+             fake_image_numpy = fake_image.detach().cpu().numpy()
+             fake_image_numpy = np.squeeze(fake_image_numpy)*255.0
+  
+@@ -179,21 +225,66 @@ def image_test(one_filename,net_G,patch_size=[128,128],f_txt=None,opt=None):
+     print(' average_psnr_predict:{:.04f} average_psnr_anchor:{:.04f}  average_psnr_gain:{:0.4f}'.format(ave_psnr_predict/video_num,ave_psnr_data/video_num,ave_gain_psnr/video_num))
+     print(' average_psnr_predict:{:.04f} average_psnr_anchor:{:.04f}  average_psnr_gain:{:0.4f}'.format(ave_psnr_predict/video_num,ave_psnr_data/video_num,ave_gain_psnr/video_num), file=f_txt)
+ 
+-
++    print('Throughput: {}'.format((nums * video_num - 1) / total_time))
++
++    #
++    if opt.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    opt.arch + str(itr) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
+ 
+ 
+ if __name__ == "__main__":
+    
+     parser = argparse.ArgumentParser(description="MGANet_test")
+-    parser.add_argument('--net_G', default='../model/model_epoch_AI37.pth',help="add checkpoint")
+     parser.add_argument("--gpu_id", default=0, type=int, help="gpu ids (default: 0)")
++    parser.add_argument('--net_G', default='../models/model_epoch_AI37.pth',help="add checkpoint")
++    parser.add_argument("--arch", default="MGANet", type=str, help="model name")
++    parser.add_argument("--batch_size", default=1, type=int, help="batch size")
++    parser.add_argument("--channels_last", default=0, type=int, help="channels last")
+     parser.add_argument("--video_nums", default=1, type=int, help="Videos number (default: 0)")
+     parser.add_argument("--frame_nums", default=29, type=int, help="frame number of the video to test (default: 90)")
+     parser.add_argument("--startfrm_position", default=9, type=int, help="start frame position in one video (default: 0)")
+-    parser.add_argument("--is_training", default=False, type=bool, help="train or test mode")
+     parser.add_argument("--result_path", default='./result_AI37/', type=str, help="store results")
++    parser.add_argument("--is_training", action='store_true', help="train or test mode")
++    parser.add_argument('--cuda', action='store_true', help='enables cuda')
++    parser.add_argument('--ipex', action='store_true', help='Use MKLDNN to get boost.')
++    parser.add_argument('--precision', type=str, default="float32",
++                        help='precision, float32, bfloat16')
++    # parser.add_argument('--num_warmup', type=int, default=5, help='number of warm up, default is 5.')
++    # parser.add_argument('--max_iter', type=int, default=0, help='number of max iterations to run, default is 0.')
++    parser.add_argument('--jit', action='store_true', help='Use Pytorch jit to get boost.')
++    parser.add_argument('--profile', action='store_true', help='profile')
+     opts = parser.parse_args()
+-    torch.cuda.set_device(opts.gpu_id)
++    print(opts)
++    if opts.cuda:
++        torch.cuda.set_device(opts.gpu_id)
+ 
+     txt_name = './MGANet_test_data_AI37.txt'
+ 
+@@ -203,15 +294,31 @@ if __name__ == "__main__":
+         os.mknod(txt_name)
+         f = open(txt_name, 'w+')
+ 
+-    one_filename = np.sort(glob.glob('../test_yuv/AI37/' + '*'))
++    one_filename = np.sort(glob.glob('../testing_set/AI37/' + '*'))
+     print(one_filename)
+    
+     patch_size =[240,416]
+     net_G = MGANet.Gen_Guided_UNet(batchNorm=False,input_size=patch_size,is_training=opts.is_training)
+     net_G.eval()
+-    net_G.load_state_dict(torch.load(opts.net_G,map_location=lambda storage, loc: storage.cuda(opts.gpu_id)))
++    if opts.cuda:
++        net_G.load_state_dict(torch.load(opts.net_G,map_location=lambda storage, loc: storage.cuda(opts.gpu_id)))
++    else:
++        net_G.load_state_dict(torch.load(opts.net_G, map_location=torch.device('cpu')))
+     print('....')
+-    net_G.cuda()
++
++    if opts.cuda:
++        net_G.cuda()
++    elif opts.ipex:
++        assert TEST_IPEX, "No module: intel_pytorch_extension"
++        print('Running with IPEX...')
++        if opts.precision=="bfloat16":
++            # Automatically mix precision
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++        net_G.to(ipex.DEVICE)
++        if opts.jit:
++            input = torch.rand(1,1,240,416).to(ipex.DEVICE)
++            net_G = torch.jit.trace(net_G,(input, input, input, input))
+ 
+     image_test(one_filename=one_filename,net_G=net_G,patch_size=patch_size,f_txt = f,opt = opts)
+     f.close()
+diff --git a/codes/Net/MGANet.py b/codes/Net/MGANet.py
+index 2db35f3..37aa4a6 100644
+--- a/codes/Net/MGANet.py
++++ b/codes/Net/MGANet.py
+@@ -176,7 +176,7 @@ class Gen_Guided_UNet(nn.Module):
+         image_finally = torch.clamp(image_finally,0.,1.)
+         # print('image_1',image_finally.shape)
+ 
+-        if self.is＿training:
++        if self.is_training:
+             return image_4,image_3,image_2,image_1,image_finally
+         else:
+             return image_finally

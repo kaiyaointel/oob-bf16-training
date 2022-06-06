@@ -1,0 +1,32 @@
+{
+    "framework": "pytorch",
+    "model": "ConvolutionSeq2Seq",
+    "requirement": "requirements.txt",
+    
+    "benchmark": [
+        {
+            "basecommit": "",
+            "patch": "convseq2seq.patch",
+            "precision": "fp32",
+            "mode": "realtime",
+            "batch_size": "1",
+            "cores_per_instance": "4",
+            "checkpoint": "/lustre/dataset/pytorch-broad-models/Convseq2seq/models/checkpoint_best.pt",
+            "dataset": "/lustre/dataset/pytorch-broad-models/Convseq2seq/dataset/wmt14_en_de",
+            "script_path": "run.sh"
+        },
+        
+        {
+            "basecommit": "",
+            "patch": "convseq2seq.patch",
+            "precision": "fp32",
+            "mode": "throughput",
+            "batch_size": "3000,6000,8000,12000",
+            "cores_per_instance": "24",
+            "checkpoint": "/lustre/dataset/pytorch-broad-models/Convseq2seq/models/checkpoint_best.pt",
+            "dataset": "/lustre/dataset/pytorch-broad-models/Convseq2seq/dataset/wmt14_en_de",
+            "script_path": "run.sh"
+        }
+    ]
+}
+

@@ -1,0 +1,286 @@
+diff --git a/pytorch/eval.py b/pytorch/eval.py
+index eff3618..2d527f3 100644
+--- a/pytorch/eval.py
++++ b/pytorch/eval.py
+@@ -2,7 +2,8 @@
+ import argparse
+ import time
+ import math
+-import os, sys
++import os
++import sys
+ 
+ import torch
+ 
+@@ -19,7 +20,7 @@ parser.add_argument('--dataset', type=str, default='wt103',
+ parser.add_argument('--split', type=str, default='all',
+                     choices=['all', 'valid', 'test'],
+                     help='which split to evaluate')
+-parser.add_argument('--batch_size', type=int, default=10,
++parser.add_argument('--batch_size', type=int, default=2,
+                     help='batch size')
+ parser.add_argument('--tgt_len', type=int, default=5,
+                     help='number of tokens to predict')
+@@ -29,6 +30,8 @@ parser.add_argument('--mem_len', type=int, default=0,
+                     help='length of the retained previous heads')
+ parser.add_argument('--clamp_len', type=int, default=-1,
+                     help='max positional embedding index')
++parser.add_argument('--eval_warmup', type=int, default=5)
++parser.add_argument('--eval_iters', type=int, default=0)
+ parser.add_argument('--cuda', action='store_true',
+                     help='use CUDA')
+ parser.add_argument('--work_dir', type=str, required=True,
+@@ -37,10 +40,26 @@ parser.add_argument('--no_log', action='store_true',
+                     help='do not log the eval result')
+ parser.add_argument('--same_length', action='store_true',
+                     help='set same length attention with masking')
++parser.add_argument('--ipex', action='store_true', default=False,
++                    help='use intel pytorch extension')
++parser.add_argument('--precision', type=str, default="float32",
++                    help='precision, float32, bfloat16')
++parser.add_argument('--jit', action='store_true', default=False,
++                    help='enable ipex jit fusionpath')
++parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++parser.add_argument('--arch', type=str, default=None, help='model name')
++parser.add_argument('--profile', action='store_true', help='Trigger profile on current topology.')
++
+ args = parser.parse_args()
+ assert args.ext_len >= 0, 'extended context length must be non-negative'
+ 
+-device = torch.device("cuda" if args.cuda else "cpu")
++if args.cuda:
++    device = torch.device("cuda")
++elif args.ipex:
++    import intel_pytorch_extension as ipex
++    device = ipex.DEVICE
++else:
++    device = torch.device("cpu")
+ 
+ # Get logger
+ logging = get_logger(os.path.join(args.work_dir, 'log.txt'),
+@@ -51,18 +70,24 @@ corpus = get_lm_corpus(args.data, args.dataset)
+ ntokens = len(corpus.vocab)
+ 
+ va_iter = corpus.get_iterator('valid', args.batch_size, args.tgt_len,
+-    device=device, ext_len=args.ext_len)
++                              device=device, ext_len=args.ext_len)
+ te_iter = corpus.get_iterator('test', args.batch_size, args.tgt_len,
+-    device=device, ext_len=args.ext_len)
++                              device=device, ext_len=args.ext_len)
+ 
+ # Load the best saved model.
+ with open(os.path.join(args.work_dir, 'model.pt'), 'rb') as f:
+     model = torch.load(f)
+ model.backward_compatible()
+-model = model.to(device)
++if args.channels_last:
++    model_oob = model
++    model_oob = model_oob.to(memory_format=torch.channels_last)
++    model = model_oob
++    print("---- Use channels last format.")
++else:
++    model = model.to(device)
+ 
+ logging('Evaluating with bsz {} tgt_len {} ext_len {} mem_len {} clamp_len {}'.format(
+-       args.batch_size, args.tgt_len, args.ext_len, args.mem_len, args.clamp_len))
++    args.batch_size, args.tgt_len, args.ext_len, args.mem_len, args.clamp_len))
+ 
+ model.reset_length(args.tgt_len, args.ext_len, args.mem_len)
+ if args.clamp_len > 0:
+@@ -70,27 +95,107 @@ if args.clamp_len > 0:
+ if args.same_length:
+     model.same_length = True
+ 
++if args.jit:
++    logging('running jit fusion path')
++
+ ###############################################################################
+ # Evaluation code
+ ###############################################################################
+-def evaluate(eval_iter):
++
++
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
++
++def evaluate(eval_iter, model):
+     # Turn on evaluation mode which disables dropout.
+     model.eval()
++    if args.ipex:
++        if args.precision == "bfloat16":
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++        else:
++            print("running fp32 evalation step\n")
+     total_len, total_loss = 0, 0.
+     start_time = time.time()
+     with torch.no_grad():
+         mems = tuple()
+         for idx, (data, target, seq_len) in enumerate(eval_iter):
+-            ret = model(data, target, *mems)
+-            loss, mems = ret[0], ret[1:]
+-            loss = loss.mean()
+-            total_loss += seq_len * loss.item()
+-            total_len += seq_len
++            if args.eval_iters != 0 and idx >= args.eval_iters:
++                break
++            if idx == args.eval_warmup:
++                start_time = time.time()
++
++            if args.ipex:
++                data = data.to(device=ipex.DEVICE)
++                target = target.to(device=ipex.DEVICE)
++                if args.jit:
++                    model = torch.jit.trace(model, data, target)
++                ret = model(data, target, *mems)
++                loss, mems = ret[0], ret[1:]
++                loss = loss.mean()
++                total_loss += seq_len * loss.item()
++                total_len += seq_len
++            else:
++                if args.channels_last:
++                    data_oob, target_oob = data, target
++                    data_oob = data_oob.to(memory_format=torch.channels_last)
++                    target_oob = target_oob.to(memory_format=torch.channels_last)
++                    if args.jit:
++                        model = torch.jit.trace(model, data_oob, target_oob)
++                    data, target = data_oob, target_oob
++                if args.profile:
++                    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                        if args.precision == "bfloat16":
++                            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                                ret = model(data, target, *mems)
++                        else:
++                            ret = model(data, target, *mems)
++                else:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            ret = model(data, target, *mems)
++                    else:
++                        ret = model(data, target, *mems)
++                loss, mems = ret[0], ret[1:]
++                loss = loss.mean()
++                total_loss += seq_len * loss.item()
++                total_len += seq_len
+         total_time = time.time() - start_time
+-    logging('Time : {:.2f}s, {:.2f}ms/segment'.format(
+-            total_time, 1000 * total_time / (idx+1)))
++    logging('Time : {:.2f}s\ninference Throughput: {:.2f} segments/s'.format(
++            total_time, (idx - args.eval_warmup) * args.batch_size / total_time))
++    #
++    if args.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    "transformerxl" + str(idx) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
+     return total_loss / total_len
+ 
++
+ # Run on test data.
+ if args.split == 'all':
+     test_loss = evaluate(te_iter)
+@@ -99,9 +204,10 @@ elif args.split == 'valid':
+     valid_loss = evaluate(va_iter)
+     test_loss = None
+ elif args.split == 'test':
+-    test_loss = evaluate(te_iter)
++    test_loss = evaluate(te_iter, model)
+     valid_loss = None
+ 
++
+ def format_log(loss, split):
+     if args.dataset in ['enwik8', 'text8']:
+         log_str = '| {0} loss {1:5.2f} | {0} bpc {2:9.5f} '.format(
+@@ -111,6 +217,7 @@ def format_log(loss, split):
+             split, loss, math.exp(loss))
+     return log_str
+ 
++
+ log_str = ''
+ if valid_loss is not None:
+     log_str += format_log(valid_loss, 'valid')
+diff --git a/pytorch/mem_transformer.py b/pytorch/mem_transformer.py
+index 45147df..18b1624 100644
+--- a/pytorch/mem_transformer.py
++++ b/pytorch/mem_transformer.py
+@@ -196,7 +196,8 @@ class RelMultiHeadAttn(nn.Module):
+                                device=x.device, dtype=x.dtype)
+         x_padded = torch.cat([zero_pad, x], dim=1)
+ 
+-        x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
++        x_padded = x_padded.reshape(x.size(1) + 1, x.size(0), *x.size()[2:])
++        # x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
+ 
+         x = x_padded[1:].view_as(x)
+ 
+diff --git a/pytorch/run_wt103_base.sh b/pytorch/run_wt103_base.sh
+index 22c7550..281a4a7 100644
+--- a/pytorch/run_wt103_base.sh
++++ b/pytorch/run_wt103_base.sh
+@@ -3,7 +3,6 @@
+ if [[ $1 == 'train' ]]; then
+     echo 'Run training...'
+     python train.py \
+-        --cuda \
+         --data ../data/wikitext-103/ \
+         --dataset wt103 \
+         --adaptive \
+@@ -17,18 +16,14 @@ if [[ $1 == 'train' ]]; then
+         --optim adam \
+         --lr 0.00025 \
+         --warmup_step 0 \
+-        --max_step 200000 \
+         --tgt_len 150 \
+         --mem_len 150 \
+         --eval_tgt_len 150 \
+-        --batch_size 60 \
+-        --multi_gpu \
+-        --gpu0_bsz 4 \
++        --batch_size 20 \
+         ${@:2}
+ elif [[ $1 == 'eval' ]]; then
+     echo 'Run evaluation...'
+     python eval.py \
+-        --cuda \
+         --data ../data/wikitext-103/ \
+         --dataset wt103 \
+         --tgt_len 64 \
+diff --git a/pytorch/utils/proj_adaptive_softmax.py b/pytorch/utils/proj_adaptive_softmax.py
+index a0fbfeb..6576207 100644
+--- a/pytorch/utils/proj_adaptive_softmax.py
++++ b/pytorch/utils/proj_adaptive_softmax.py
+@@ -6,8 +6,8 @@ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+ 
+-CUDA_MAJOR = int(torch.version.cuda.split('.')[0])
+-CUDA_MINOR = int(torch.version.cuda.split('.')[1])
++# CUDA_MAJOR = int(torch.version.cuda.split('.')[0])
++# CUDA_MINOR = int(torch.version.cuda.split('.')[1])
+ 
+ class ProjectedAdaptiveLogSoftmax(nn.Module):
+     def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1,

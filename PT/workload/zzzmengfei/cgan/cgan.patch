@@ -1,0 +1,122 @@
+commit 5fa15fb7efbc112ca0f1f70b5e33f61107e5591a
+Author: limengfei <mengfei.li@intel.com>
+Date:   Sun Jul 4 20:03:20 2021 +0800
+
+    add cgan int8
+
+diff --git a/implementations/cgan/cgan.py b/implementations/cgan/cgan.py
+index 9e32b7c..2d64c1f 100644
+--- a/implementations/cgan/cgan.py
++++ b/implementations/cgan/cgan.py
+@@ -2,6 +2,7 @@ import argparse
+ import os
+ import numpy as np
+ import math
++import time
+ 
+ import torchvision.transforms as transforms
+ from torchvision.utils import save_image
+@@ -28,6 +29,17 @@ parser.add_argument("--n_classes", type=int, default=10, help="number of classes
+ parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
+ parser.add_argument("--channels", type=int, default=1, help="number of image channels")
+ parser.add_argument("--sample_interval", type=int, default=400, help="interval between image sampling")
++parser.add_argument("--arch", type=str, default="", help="model name")
++parser.add_argument('--outf', default='./model', help='folder to output images and model checkpoints')
++parser.add_argument('--inference', action='store_true', default=False)
++parser.add_argument('--num-warmup', default=10, type=int)
++parser.add_argument('--num-iterations', default=100, type=int)
++parser.add_argument('--ipex', action='store_true', default=False)
++parser.add_argument('--precision', default='float32', help='Precision, "float32" or "bfloat16"')
++parser.add_argument('--jit', action='store_true', default=False)
++parser.add_argument('--profile', action='store_true', default=False ,help='Trigger profile on current topology.')
++parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++parser.add_argument('--config_file', type=str, default='./conf.yaml', help='config file for int8 tuning')
+ opt = parser.parse_args()
+ print(opt)
+ 
+@@ -35,6 +47,12 @@ img_shape = (opt.channels, opt.img_size, opt.img_size)
+ 
+ cuda = True if torch.cuda.is_available() else False
+ 
++class _DataLoader(object):
++    def __init__(self, data=None, batch_size=1):
++        self.data = data
++        self.batch_size = batch_size
++    def __iter__(self):
++        yield self.data, self.data[1]
+ 
+ class Generator(nn.Module):
+     def __init__(self):
+@@ -125,6 +143,72 @@ optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt
+ FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+ LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
+ 
++def generate(netG, batchsize, device):
++    fixed_noise = Variable(FloatTensor(np.random.normal(0, 1, (10 ** 2, opt.latent_dim))))
++    if opt.channels_last:
++        netG_oob, fixed_noise_oob = netG, fixed_noise
++        netG_oob = netG_oob.to(memory_format=torch.channels_last)
++        try:
++            fixed_noise_oob = fixed_noise_oob.to(memory_format=torch.channels_last)
++        except:
++            print("Input NHWC failed! Use normal input.")
++        netG, fixed_noise = netG_oob, fixed_noise_oob
++    else:
++        netG = netG.to(device=device)
++        fixed_noise = fixed_noise.to(device=device)
++    labels = np.array([num for _ in range(10) for num in range(10)])
++    labels = Variable(LongTensor(labels))
++
++    if opt.precision == 'int8':
++        from lpot.experimental import Quantization, common
++        quantizer = Quantization((opt.config_file))
++        dataset = (fixed_noise, labels)
++        calib_dataloader = _DataLoader(dataset)
++        quantizer.calib_dataloader = calib_dataloader
++        quantizer.model = common.Model(netG)
++        q_model = quantizer()
++        netG = q_model.model
++
++    netG.eval()
++
++    if opt.jit:
++        netG = torch.jit.trace(netG, (fixed_noise, labels))
++    with torch.no_grad():
++        for i in range(opt.num_warmup + opt.num_iterations):
++            if i == opt.num_warmup:
++                tic = time.time()
++            if opt.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if opt.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            fake = netG(fixed_noise, labels)
++                    else:
++                        fake = netG(fixed_noise, labels)
++            else:
++                if opt.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        fake = netG(fixed_noise, labels)
++                else:
++                    fake = netG(fixed_noise, labels)
++    toc = time.time() - tic
++    print("Throughput: %.2f image/sec, batchsize: %d, latency = %.2f ms"%((opt.num_iterations*batchsize)/toc, batchsize, 1000*toc/opt.num_iterations))
++    #
++    if opt.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    opt.arch + '-' + str(i + 1) + '-' + str(os.getpid()) + '.json'
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++if opt.inference:
++    print("----------------Generation benchmarking---------------")
++    generate(generator, opt.batch_size, device=torch.device('cpu'))
++    import sys
++    sys.exit(0)
+ 
+ def sample_image(n_row, batches_done):
+     """Saves a grid of generated digits ranging from 0 to n_classes"""

@@ -1,0 +1,296 @@
+diff --git a/envs.py b/envs.py
+index 0724432..bf9db2e 100644
+--- a/envs.py
++++ b/envs.py
+@@ -28,22 +28,24 @@ def _process_frame42(frame):
+ 
+ class AtariRescale42x42(gym.ObservationWrapper):
+     def __init__(self, env=None):
+-        super(AtariRescale42x42, self).__init__(env)
++        gym.ObservationWrapper.__init__(self, env)
++    # super(AtariRescale42x42, self).__init__(env)
+         self.observation_space = Box(0.0, 1.0, [1, 42, 42])
+ 
+-    def _observation(self, observation):
++    def observation(self, observation):
+         return _process_frame42(observation)
+ 
+ 
+ class NormalizedEnv(gym.ObservationWrapper):
+     def __init__(self, env=None):
+-        super(NormalizedEnv, self).__init__(env)
++        gym.ObservationWrapper.__init__(self, env)
++    # super(NormalizedEnv, self).__init__(env)
+         self.state_mean = 0
+         self.state_std = 0
+         self.alpha = 0.9999
+         self.num_steps = 0
+ 
+-    def _observation(self, observation):
++    def observation(self, observation):
+         self.num_steps += 1
+         self.state_mean = self.state_mean * self.alpha + \
+             observation.mean() * (1 - self.alpha)
+diff --git a/main.py b/main.py
+index bbb8114..0159dbe 100644
+--- a/main.py
++++ b/main.py
+@@ -4,74 +4,39 @@ import argparse
+ import os
+ 
+ import torch
+-import torch.multiprocessing as mp
+ 
+-import my_optim
+ from envs import create_atari_env
+ from model import ActorCritic
+ from test import test
+-from train import train
+ 
+ # Based on
+ # https://github.com/pytorch/examples/tree/master/mnist_hogwild
+ # Training settings
+ parser = argparse.ArgumentParser(description='A3C')
+-parser.add_argument('--lr', type=float, default=0.0001,
+-                    help='learning rate (default: 0.0001)')
+-parser.add_argument('--gamma', type=float, default=0.99,
+-                    help='discount factor for rewards (default: 0.99)')
+-parser.add_argument('--gae-lambda', type=float, default=1.00,
+-                    help='lambda parameter for GAE (default: 1.00)')
+-parser.add_argument('--entropy-coef', type=float, default=0.01,
+-                    help='entropy term coefficient (default: 0.01)')
+-parser.add_argument('--value-loss-coef', type=float, default=0.5,
+-                    help='value loss coefficient (default: 0.5)')
+-parser.add_argument('--max-grad-norm', type=float, default=50,
+-                    help='value loss coefficient (default: 50)')
+-parser.add_argument('--seed', type=int, default=1,
+-                    help='random seed (default: 1)')
+-parser.add_argument('--num-processes', type=int, default=4,
+-                    help='how many training processes to use (default: 4)')
+-parser.add_argument('--num-steps', type=int, default=20,
+-                    help='number of forward steps in A3C (default: 20)')
+ parser.add_argument('--max-episode-length', type=int, default=1000000,
+                     help='maximum length of an episode (default: 1000000)')
++parser.add_argument('--arch', type=str, default="",
++                    help='model names')
+ parser.add_argument('--env-name', default='PongDeterministic-v4',
+                     help='environment to train on (default: PongDeterministic-v4)')
+-parser.add_argument('--no-shared', default=False,
+-                    help='use an optimizer without shared momentum.')
++parser.add_argument('--ipex', action='store_true', default=False,
++                    help='use intel pytorch extension')
++parser.add_argument('--precision', type=str, default="float32",
++                    help='precision, float32, bfloat16')
++parser.add_argument('--jit', action='store_true', default=False,
++                    help='enable ipex jit fusionpath')
++parser.add_argument('--profile', action='store_true', default=False,
++                    help='Trigger profile on current topology.')
++parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++
+ 
+ 
+ if __name__ == '__main__':
+-    os.environ['OMP_NUM_THREADS'] = '1'
+-    os.environ['CUDA_VISIBLE_DEVICES'] = ""
+ 
+     args = parser.parse_args()
+-
+-    torch.manual_seed(args.seed)
+     env = create_atari_env(args.env_name)
+     shared_model = ActorCritic(
+         env.observation_space.shape[0], env.action_space)
+     shared_model.share_memory()
+ 
+-    if args.no_shared:
+-        optimizer = None
+-    else:
+-        optimizer = my_optim.SharedAdam(shared_model.parameters(), lr=args.lr)
+-        optimizer.share_memory()
+-
+-    processes = []
+-
+-    counter = mp.Value('i', 0)
+-    lock = mp.Lock()
+-
+-    p = mp.Process(target=test, args=(args.num_processes, args, shared_model, counter))
+-    p.start()
+-    processes.append(p)
+-
+-    for rank in range(0, args.num_processes):
+-        p = mp.Process(target=train, args=(rank, args, shared_model, counter, lock, optimizer))
+-        p.start()
+-        processes.append(p)
+-    for p in processes:
+-        p.join()
++    test(args, shared_model)
+diff --git a/model.py b/model.py
+index 2cdff4d..e598097 100644
+--- a/model.py
++++ b/model.py
+@@ -62,7 +62,7 @@ class ActorCritic(torch.nn.Module):
+         x = F.elu(self.conv3(x))
+         x = F.elu(self.conv4(x))
+ 
+-        x = x.view(-1, 32 * 3 * 3)
++        x = x.reshape(-1, 32 * 3 * 3)
+         hx, cx = self.lstm(x, (hx, cx))
+         x = hx
+ 
+diff --git a/test.py b/test.py
+index 00566c3..638e465 100644
+--- a/test.py
++++ b/test.py
+@@ -1,6 +1,6 @@
+ import time
+ from collections import deque
+-
++import os
+ import torch
+ import torch.nn.functional as F
+ 
+@@ -8,11 +8,8 @@ from envs import create_atari_env
+ from model import ActorCritic
+ 
+ 
+-def test(rank, args, shared_model, counter):
+-    torch.manual_seed(args.seed + rank)
+-
++def test(args, shared_model):
+     env = create_atari_env(args.env_name)
+-    env.seed(args.seed + rank)
+ 
+     model = ActorCritic(env.observation_space.shape[0], env.action_space)
+ 
+@@ -20,14 +17,41 @@ def test(rank, args, shared_model, counter):
+ 
+     state = env.reset()
+     state = torch.from_numpy(state)
++
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        model = model.to(device=ipex.DEVICE)
++        if args.precision == 'bfloat16':
++            # Automatically mix precision
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++        else:
++            print("running fp32 evalation step\n")
++        if args.jit:
++            model = torch.jit.trace(model, (state.unsqueeze(0), (hx, cx)))
++            print("running jit fusion path\n")
++    elif args.channels_last:
++        model_oob, state_oob = model, state
++        model_oob = model_oob.to(memory_format=torch.channels_last)
++        try:
++            state_oob = state_oob.to(memory_format=torch.channels_last)
++        except:
++            print("Input NHWC failed! Use normal input.")
++        if args.jit:
++            model_oob = torch.jit.trace(model_oob, (state_oob.unsqueeze(0), (hx, cx)))
++            print("running jit fusion path\n")
++        model, state = model_oob, state_oob
++
+     reward_sum = 0
+     done = True
+ 
+-    start_time = time.time()
+-
+     # a quick hack to prevent the agent from stucking
+     actions = deque(maxlen=100)
+     episode_length = 0
++    total_episode_length = 0
++    count = 0
++    total_time = 0
++    start_time = time.time()
+     while True:
+         episode_length += 1
+         # Sync with the shared model
+@@ -40,10 +64,25 @@ def test(rank, args, shared_model, counter):
+             hx = hx.detach()
+ 
+         with torch.no_grad():
++            if args.ipex:
++                state = state.to(ipex.DEVICE)
+             value, logit, (hx, cx) = model((state.unsqueeze(0), (hx, cx)))
+         prob = F.softmax(logit, dim=-1)
+-        action = prob.max(1, keepdim=True)[1].numpy()
+-
++        #tmp = prob.max(1, keepdim=True)[1].cpu()
++        if args.profile:
++            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                if args.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        tmp = prob.max(1, keepdim=True)[1].cpu()
++                else:
++                    tmp = prob.max(1, keepdim=True)[1].cpu()
++        else:
++            if args.precision == "bfloat16":
++                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                    tmp = prob.max(1, keepdim=True)[1].cpu()
++            else:
++                tmp = prob.max(1, keepdim=True)[1].cpu()
++        action = tmp.numpy()
+         state, reward, done, _ = env.step(action[0, 0])
+         done = done or episode_length >= args.max_episode_length
+         reward_sum += reward
+@@ -54,15 +93,53 @@ def test(rank, args, shared_model, counter):
+             done = True
+ 
+         if done:
+-            print("Time {}, num steps {}, FPS {:.0f}, episode reward {}, episode length {}".format(
+-                time.strftime("%Hh %Mm %Ss",
+-                              time.gmtime(time.time() - start_time)),
+-                counter.value, counter.value / (time.time() - start_time),
+-                reward_sum, episode_length))
++            if count > 9:
++                iter_time = time.time() - start_time
++                total_time += iter_time
++                print("Time {}, episode reward {}, episode length {}".format(
++                    time.strftime("%Hh %Mm %Ss",
++                                        time.gmtime(iter_time)),
++                                  reward_sum, episode_length))
+             reward_sum = 0
++            if count > 9:
++                total_episode_length += episode_length
+             episode_length = 0
+             actions.clear()
+             state = env.reset()
+-            time.sleep(60)
+-
++            count += 1
++            if count > 20:
++                print('Throughput is: %f tokens/s' % (total_episode_length / total_time))
++                break
+         state = torch.from_numpy(state)
++    #
++    if args.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    "a3c" + str(episode_length) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++

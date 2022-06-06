@@ -1,0 +1,837 @@
+Submodule path 'PT/transformers': checked out '7972a4019f4bc9f85fd358f42249b90f9cd27c68'
+Requirement already satisfied: Pillow in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (8.3.1)
+Requirement already satisfied: tensorboard in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (2.5.0)
+Requirement already satisfied: grpcio>=1.24.3 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (1.39.0)
+Requirement already satisfied: protobuf>=3.6.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (3.17.3)
+Requirement already satisfied: google-auth-oauthlib<0.5,>=0.4.1 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (0.4.4)
+Requirement already satisfied: absl-py>=0.4 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (0.12.0)
+Requirement already satisfied: numpy>=1.12.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (1.19.5)
+Requirement already satisfied: google-auth<2,>=1.6.3 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (1.33.1)
+Requirement already satisfied: wheel>=0.26 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (0.36.2)
+Requirement already satisfied: setuptools>=41.0.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (52.0.0.post20210125)
+Requirement already satisfied: markdown>=2.6.8 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (3.3.4)
+Requirement already satisfied: tensorboard-data-server<0.7.0,>=0.6.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (0.6.1)
+Requirement already satisfied: werkzeug>=0.11.15 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (2.0.1)
+Requirement already satisfied: requests<3,>=2.21.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (2.26.0)
+Requirement already satisfied: tensorboard-plugin-wit>=1.6.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboard) (1.8.0)
+Requirement already satisfied: six in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from absl-py>=0.4->tensorboard) (1.16.0)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from google-auth<2,>=1.6.3->tensorboard) (0.2.8)
+Requirement already satisfied: cachetools<5.0,>=2.0.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from google-auth<2,>=1.6.3->tensorboard) (4.2.2)
+Requirement already satisfied: rsa<5,>=3.1.4 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from google-auth<2,>=1.6.3->tensorboard) (4.7.2)
+Requirement already satisfied: requests-oauthlib>=0.7.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from google-auth-oauthlib<0.5,>=0.4.1->tensorboard) (1.3.0)
+Requirement already satisfied: importlib-metadata in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from markdown>=2.6.8->tensorboard) (4.6.1)
+Requirement already satisfied: pyasn1<0.5.0,>=0.4.6 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from pyasn1-modules>=0.2.1->google-auth<2,>=1.6.3->tensorboard) (0.4.8)
+Requirement already satisfied: idna<4,>=2.5 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from requests<3,>=2.21.0->tensorboard) (3.2)
+Requirement already satisfied: charset-normalizer~=2.0.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from requests<3,>=2.21.0->tensorboard) (2.0.3)
+Requirement already satisfied: urllib3<1.27,>=1.21.1 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from requests<3,>=2.21.0->tensorboard) (1.26.6)
+Requirement already satisfied: certifi>=2017.4.17 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from requests<3,>=2.21.0->tensorboard) (2021.5.30)
+Requirement already satisfied: oauthlib>=3.0.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from requests-oauthlib>=0.7.0->google-auth-oauthlib<0.5,>=0.4.1->tensorboard) (3.1.1)
+Requirement already satisfied: dataclasses in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from werkzeug>=0.11.15->tensorboard) (0.8)
+Requirement already satisfied: typing-extensions>=3.6.4 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from importlib-metadata->markdown>=2.6.8->tensorboard) (3.10.0.0)
+Requirement already satisfied: zipp>=0.5 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from importlib-metadata->markdown>=2.6.8->tensorboard) (3.5.0)
+Requirement already satisfied: tensorboardX in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (2.4)
+Requirement already satisfied: protobuf>=3.8.0 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboardX) (3.17.3)
+Requirement already satisfied: numpy in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from tensorboardX) (1.19.5)
+Requirement already satisfied: six>=1.9 in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (from protobuf>=3.8.0->tensorboardX) (1.16.0)
+Requirement already satisfied: xlsxwriter in /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages (1.4.4)
+running install
+running bdist_egg
+running egg_info
+creating src/transformers.egg-info
+writing src/transformers.egg-info/PKG-INFO
+writing dependency_links to src/transformers.egg-info/dependency_links.txt
+writing requirements to src/transformers.egg-info/requires.txt
+writing top-level names to src/transformers.egg-info/top_level.txt
+writing manifest file 'src/transformers.egg-info/SOURCES.txt'
+reading manifest file 'src/transformers.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+writing manifest file 'src/transformers.egg-info/SOURCES.txt'
+installing library code to build/bdist.linux-x86_64/egg
+running install_lib
+running build_py
+creating build
+creating build/lib
+creating build/lib/transformers
+copying src/transformers/__init__.py -> build/lib/transformers
+copying src/transformers/activations.py -> build/lib/transformers
+copying src/transformers/benchmark_utils.py -> build/lib/transformers
+copying src/transformers/configuration_albert.py -> build/lib/transformers
+copying src/transformers/configuration_auto.py -> build/lib/transformers
+copying src/transformers/configuration_bart.py -> build/lib/transformers
+copying src/transformers/configuration_bert.py -> build/lib/transformers
+copying src/transformers/configuration_camembert.py -> build/lib/transformers
+copying src/transformers/configuration_ctrl.py -> build/lib/transformers
+copying src/transformers/configuration_distilbert.py -> build/lib/transformers
+copying src/transformers/configuration_electra.py -> build/lib/transformers
+copying src/transformers/configuration_flaubert.py -> build/lib/transformers
+copying src/transformers/configuration_gpt2.py -> build/lib/transformers
+copying src/transformers/configuration_mmbt.py -> build/lib/transformers
+copying src/transformers/configuration_openai.py -> build/lib/transformers
+copying src/transformers/configuration_roberta.py -> build/lib/transformers
+copying src/transformers/configuration_t5.py -> build/lib/transformers
+copying src/transformers/configuration_transfo_xl.py -> build/lib/transformers
+copying src/transformers/configuration_utils.py -> build/lib/transformers
+copying src/transformers/configuration_xlm.py -> build/lib/transformers
+copying src/transformers/configuration_xlm_roberta.py -> build/lib/transformers
+copying src/transformers/configuration_xlnet.py -> build/lib/transformers
+copying src/transformers/convert_albert_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_bart_original_pytorch_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_bert_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_bert_pytorch_checkpoint_to_original_tf.py -> build/lib/transformers
+copying src/transformers/convert_dialogpt_original_pytorch_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_electra_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_gpt2_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_openai_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_pytorch_checkpoint_to_tf2.py -> build/lib/transformers
+copying src/transformers/convert_roberta_original_pytorch_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_t5_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_transfo_xl_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_xlm_original_pytorch_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/convert_xlnet_original_tf_checkpoint_to_pytorch.py -> build/lib/transformers
+copying src/transformers/file_utils.py -> build/lib/transformers
+copying src/transformers/hf_api.py -> build/lib/transformers
+copying src/transformers/hf_argparser.py -> build/lib/transformers
+copying src/transformers/modelcard.py -> build/lib/transformers
+copying src/transformers/modeling_albert.py -> build/lib/transformers
+copying src/transformers/modeling_auto.py -> build/lib/transformers
+copying src/transformers/modeling_bart.py -> build/lib/transformers
+copying src/transformers/modeling_bert.py -> build/lib/transformers
+copying src/transformers/modeling_camembert.py -> build/lib/transformers
+copying src/transformers/modeling_ctrl.py -> build/lib/transformers
+copying src/transformers/modeling_distilbert.py -> build/lib/transformers
+copying src/transformers/modeling_electra.py -> build/lib/transformers
+copying src/transformers/modeling_encoder_decoder.py -> build/lib/transformers
+copying src/transformers/modeling_flaubert.py -> build/lib/transformers
+copying src/transformers/modeling_gpt2.py -> build/lib/transformers
+copying src/transformers/modeling_mmbt.py -> build/lib/transformers
+copying src/transformers/modeling_openai.py -> build/lib/transformers
+copying src/transformers/modeling_roberta.py -> build/lib/transformers
+copying src/transformers/modeling_t5.py -> build/lib/transformers
+copying src/transformers/modeling_tf_albert.py -> build/lib/transformers
+copying src/transformers/modeling_tf_auto.py -> build/lib/transformers
+copying src/transformers/modeling_tf_bert.py -> build/lib/transformers
+copying src/transformers/modeling_tf_camembert.py -> build/lib/transformers
+copying src/transformers/modeling_tf_ctrl.py -> build/lib/transformers
+copying src/transformers/modeling_tf_distilbert.py -> build/lib/transformers
+copying src/transformers/modeling_tf_electra.py -> build/lib/transformers
+copying src/transformers/modeling_tf_flaubert.py -> build/lib/transformers
+copying src/transformers/modeling_tf_gpt2.py -> build/lib/transformers
+copying src/transformers/modeling_tf_openai.py -> build/lib/transformers
+copying src/transformers/modeling_tf_pytorch_utils.py -> build/lib/transformers
+copying src/transformers/modeling_tf_roberta.py -> build/lib/transformers
+copying src/transformers/modeling_tf_t5.py -> build/lib/transformers
+copying src/transformers/modeling_tf_transfo_xl.py -> build/lib/transformers
+copying src/transformers/modeling_tf_transfo_xl_utilities.py -> build/lib/transformers
+copying src/transformers/modeling_tf_utils.py -> build/lib/transformers
+copying src/transformers/modeling_tf_xlm.py -> build/lib/transformers
+copying src/transformers/modeling_tf_xlm_roberta.py -> build/lib/transformers
+copying src/transformers/modeling_tf_xlnet.py -> build/lib/transformers
+copying src/transformers/modeling_transfo_xl.py -> build/lib/transformers
+copying src/transformers/modeling_transfo_xl_utilities.py -> build/lib/transformers
+copying src/transformers/modeling_utils.py -> build/lib/transformers
+copying src/transformers/modeling_xlm.py -> build/lib/transformers
+copying src/transformers/modeling_xlm_roberta.py -> build/lib/transformers
+copying src/transformers/modeling_xlnet.py -> build/lib/transformers
+copying src/transformers/optimization.py -> build/lib/transformers
+copying src/transformers/optimization_tf.py -> build/lib/transformers
+copying src/transformers/pipelines.py -> build/lib/transformers
+copying src/transformers/tokenization_albert.py -> build/lib/transformers
+copying src/transformers/tokenization_auto.py -> build/lib/transformers
+copying src/transformers/tokenization_bart.py -> build/lib/transformers
+copying src/transformers/tokenization_bert.py -> build/lib/transformers
+copying src/transformers/tokenization_bert_japanese.py -> build/lib/transformers
+copying src/transformers/tokenization_camembert.py -> build/lib/transformers
+copying src/transformers/tokenization_ctrl.py -> build/lib/transformers
+copying src/transformers/tokenization_distilbert.py -> build/lib/transformers
+copying src/transformers/tokenization_electra.py -> build/lib/transformers
+copying src/transformers/tokenization_flaubert.py -> build/lib/transformers
+copying src/transformers/tokenization_gpt2.py -> build/lib/transformers
+copying src/transformers/tokenization_openai.py -> build/lib/transformers
+copying src/transformers/tokenization_roberta.py -> build/lib/transformers
+copying src/transformers/tokenization_t5.py -> build/lib/transformers
+copying src/transformers/tokenization_transfo_xl.py -> build/lib/transformers
+copying src/transformers/tokenization_utils.py -> build/lib/transformers
+copying src/transformers/tokenization_xlm.py -> build/lib/transformers
+copying src/transformers/tokenization_xlm_roberta.py -> build/lib/transformers
+copying src/transformers/tokenization_xlnet.py -> build/lib/transformers
+copying src/transformers/training_args.py -> build/lib/transformers
+copying src/transformers/utils_encoder_decoder.py -> build/lib/transformers
+creating build/lib/transformers/commands
+copying src/transformers/commands/__init__.py -> build/lib/transformers/commands
+copying src/transformers/commands/convert.py -> build/lib/transformers/commands
+copying src/transformers/commands/download.py -> build/lib/transformers/commands
+copying src/transformers/commands/env.py -> build/lib/transformers/commands
+copying src/transformers/commands/run.py -> build/lib/transformers/commands
+copying src/transformers/commands/serving.py -> build/lib/transformers/commands
+copying src/transformers/commands/train.py -> build/lib/transformers/commands
+copying src/transformers/commands/user.py -> build/lib/transformers/commands
+creating build/lib/transformers/data
+copying src/transformers/data/__init__.py -> build/lib/transformers/data
+creating build/lib/transformers/data/metrics
+copying src/transformers/data/metrics/__init__.py -> build/lib/transformers/data/metrics
+copying src/transformers/data/metrics/squad_metrics.py -> build/lib/transformers/data/metrics
+creating build/lib/transformers/data/processors
+copying src/transformers/data/processors/__init__.py -> build/lib/transformers/data/processors
+copying src/transformers/data/processors/glue.py -> build/lib/transformers/data/processors
+copying src/transformers/data/processors/squad.py -> build/lib/transformers/data/processors
+copying src/transformers/data/processors/utils.py -> build/lib/transformers/data/processors
+copying src/transformers/data/processors/xnli.py -> build/lib/transformers/data/processors
+creating build/bdist.linux-x86_64
+creating build/bdist.linux-x86_64/egg
+creating build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/__init__.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/activations.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/benchmark_utils.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_albert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_auto.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_bart.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_bert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_camembert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_ctrl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_distilbert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_electra.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_flaubert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_gpt2.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_mmbt.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_openai.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_t5.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_transfo_xl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_utils.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_xlm.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_xlm_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/configuration_xlnet.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_albert_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_bart_original_pytorch_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_bert_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_bert_pytorch_checkpoint_to_original_tf.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_dialogpt_original_pytorch_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_electra_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_gpt2_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_openai_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_pytorch_checkpoint_to_tf2.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_roberta_original_pytorch_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_t5_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_transfo_xl_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_xlm_original_pytorch_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/convert_xlnet_original_tf_checkpoint_to_pytorch.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/file_utils.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/hf_api.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/hf_argparser.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modelcard.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_albert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_auto.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_bart.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_bert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_camembert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_ctrl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_distilbert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_electra.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_encoder_decoder.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_flaubert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_gpt2.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_mmbt.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_openai.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_t5.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_albert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_auto.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_bert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_camembert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_ctrl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_distilbert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_electra.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_flaubert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_gpt2.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_openai.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_pytorch_utils.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_t5.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_transfo_xl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_transfo_xl_utilities.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_utils.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_xlm.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_xlm_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_tf_xlnet.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_transfo_xl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_transfo_xl_utilities.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_utils.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_xlm.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_xlm_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/modeling_xlnet.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/optimization.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/optimization_tf.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/pipelines.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_albert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_auto.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_bart.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_bert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_bert_japanese.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_camembert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_ctrl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_distilbert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_electra.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_flaubert.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_gpt2.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_openai.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_t5.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_transfo_xl.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_utils.py -> build/bdist.linux-x86_64/egg/transformers
+creating build/bdist.linux-x86_64/egg/transformers/data
+copying build/lib/transformers/data/__init__.py -> build/bdist.linux-x86_64/egg/transformers/data
+creating build/bdist.linux-x86_64/egg/transformers/data/metrics
+copying build/lib/transformers/data/metrics/__init__.py -> build/bdist.linux-x86_64/egg/transformers/data/metrics
+copying build/lib/transformers/data/metrics/squad_metrics.py -> build/bdist.linux-x86_64/egg/transformers/data/metrics
+creating build/bdist.linux-x86_64/egg/transformers/data/processors
+copying build/lib/transformers/data/processors/__init__.py -> build/bdist.linux-x86_64/egg/transformers/data/processors
+copying build/lib/transformers/data/processors/glue.py -> build/bdist.linux-x86_64/egg/transformers/data/processors
+copying build/lib/transformers/data/processors/squad.py -> build/bdist.linux-x86_64/egg/transformers/data/processors
+copying build/lib/transformers/data/processors/utils.py -> build/bdist.linux-x86_64/egg/transformers/data/processors
+copying build/lib/transformers/data/processors/xnli.py -> build/bdist.linux-x86_64/egg/transformers/data/processors
+copying build/lib/transformers/tokenization_xlm.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_xlm_roberta.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/tokenization_xlnet.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/training_args.py -> build/bdist.linux-x86_64/egg/transformers
+copying build/lib/transformers/utils_encoder_decoder.py -> build/bdist.linux-x86_64/egg/transformers
+creating build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/__init__.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/convert.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/download.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/env.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/run.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/serving.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/train.py -> build/bdist.linux-x86_64/egg/transformers/commands
+copying build/lib/transformers/commands/user.py -> build/bdist.linux-x86_64/egg/transformers/commands
+byte-compiling build/bdist.linux-x86_64/egg/transformers/__init__.py to __init__.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/activations.py to activations.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/benchmark_utils.py to benchmark_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_albert.py to configuration_albert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_auto.py to configuration_auto.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_bart.py to configuration_bart.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_bert.py to configuration_bert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_camembert.py to configuration_camembert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_ctrl.py to configuration_ctrl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_distilbert.py to configuration_distilbert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_electra.py to configuration_electra.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_flaubert.py to configuration_flaubert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_gpt2.py to configuration_gpt2.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_mmbt.py to configuration_mmbt.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_openai.py to configuration_openai.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_roberta.py to configuration_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_t5.py to configuration_t5.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_transfo_xl.py to configuration_transfo_xl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_utils.py to configuration_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_xlm.py to configuration_xlm.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_xlm_roberta.py to configuration_xlm_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/configuration_xlnet.py to configuration_xlnet.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_albert_original_tf_checkpoint_to_pytorch.py to convert_albert_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_bart_original_pytorch_checkpoint_to_pytorch.py to convert_bart_original_pytorch_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_bert_original_tf_checkpoint_to_pytorch.py to convert_bert_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_bert_pytorch_checkpoint_to_original_tf.py to convert_bert_pytorch_checkpoint_to_original_tf.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_dialogpt_original_pytorch_checkpoint_to_pytorch.py to convert_dialogpt_original_pytorch_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_electra_original_tf_checkpoint_to_pytorch.py to convert_electra_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_gpt2_original_tf_checkpoint_to_pytorch.py to convert_gpt2_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_openai_original_tf_checkpoint_to_pytorch.py to convert_openai_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_pytorch_checkpoint_to_tf2.py to convert_pytorch_checkpoint_to_tf2.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_roberta_original_pytorch_checkpoint_to_pytorch.py to convert_roberta_original_pytorch_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_t5_original_tf_checkpoint_to_pytorch.py to convert_t5_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_transfo_xl_original_tf_checkpoint_to_pytorch.py to convert_transfo_xl_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_xlm_original_pytorch_checkpoint_to_pytorch.py to convert_xlm_original_pytorch_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/convert_xlnet_original_tf_checkpoint_to_pytorch.py to convert_xlnet_original_tf_checkpoint_to_pytorch.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/file_utils.py to file_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/hf_api.py to hf_api.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/hf_argparser.py to hf_argparser.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modelcard.py to modelcard.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_albert.py to modeling_albert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_auto.py to modeling_auto.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_bart.py to modeling_bart.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_bert.py to modeling_bert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_camembert.py to modeling_camembert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_ctrl.py to modeling_ctrl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_distilbert.py to modeling_distilbert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_electra.py to modeling_electra.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_encoder_decoder.py to modeling_encoder_decoder.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_flaubert.py to modeling_flaubert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_gpt2.py to modeling_gpt2.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_mmbt.py to modeling_mmbt.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_openai.py to modeling_openai.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_roberta.py to modeling_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_t5.py to modeling_t5.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_albert.py to modeling_tf_albert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_auto.py to modeling_tf_auto.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_bert.py to modeling_tf_bert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_camembert.py to modeling_tf_camembert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_ctrl.py to modeling_tf_ctrl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_distilbert.py to modeling_tf_distilbert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_electra.py to modeling_tf_electra.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_flaubert.py to modeling_tf_flaubert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_gpt2.py to modeling_tf_gpt2.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_openai.py to modeling_tf_openai.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_pytorch_utils.py to modeling_tf_pytorch_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_roberta.py to modeling_tf_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_t5.py to modeling_tf_t5.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_transfo_xl.py to modeling_tf_transfo_xl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_transfo_xl_utilities.py to modeling_tf_transfo_xl_utilities.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_utils.py to modeling_tf_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_xlm.py to modeling_tf_xlm.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_xlm_roberta.py to modeling_tf_xlm_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_tf_xlnet.py to modeling_tf_xlnet.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_transfo_xl.py to modeling_transfo_xl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_transfo_xl_utilities.py to modeling_transfo_xl_utilities.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_utils.py to modeling_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_xlm.py to modeling_xlm.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_xlm_roberta.py to modeling_xlm_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/modeling_xlnet.py to modeling_xlnet.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/optimization.py to optimization.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/optimization_tf.py to optimization_tf.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/pipelines.py to pipelines.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_albert.py to tokenization_albert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_auto.py to tokenization_auto.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_bart.py to tokenization_bart.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_bert.py to tokenization_bert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_bert_japanese.py to tokenization_bert_japanese.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_camembert.py to tokenization_camembert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_ctrl.py to tokenization_ctrl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_distilbert.py to tokenization_distilbert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_electra.py to tokenization_electra.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_flaubert.py to tokenization_flaubert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_gpt2.py to tokenization_gpt2.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_openai.py to tokenization_openai.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_roberta.py to tokenization_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_t5.py to tokenization_t5.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_transfo_xl.py to tokenization_transfo_xl.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_utils.py to tokenization_utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/__init__.py to __init__.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/metrics/__init__.py to __init__.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/metrics/squad_metrics.py to squad_metrics.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/processors/__init__.py to __init__.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/processors/glue.py to glue.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/processors/squad.py to squad.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/processors/utils.py to utils.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/data/processors/xnli.py to xnli.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_xlm.py to tokenization_xlm.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_xlm_roberta.py to tokenization_xlm_roberta.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/tokenization_xlnet.py to tokenization_xlnet.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/training_args.py to training_args.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/utils_encoder_decoder.py to utils_encoder_decoder.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/__init__.py to __init__.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/convert.py to convert.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/download.py to download.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/env.py to env.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/run.py to run.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/serving.py to serving.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/train.py to train.cpython-36.pyc
+byte-compiling build/bdist.linux-x86_64/egg/transformers/commands/user.py to user.cpython-36.pyc
+creating build/bdist.linux-x86_64/egg/EGG-INFO
+installing scripts to build/bdist.linux-x86_64/egg/EGG-INFO/scripts
+running install_scripts
+running build_scripts
+creating build/scripts-3.6
+copying and adjusting transformers-cli -> build/scripts-3.6
+changing mode of build/scripts-3.6/transformers-cli from 644 to 755
+creating build/bdist.linux-x86_64/egg/EGG-INFO/scripts
+copying build/scripts-3.6/transformers-cli -> build/bdist.linux-x86_64/egg/EGG-INFO/scripts
+changing mode of build/bdist.linux-x86_64/egg/EGG-INFO/scripts/transformers-cli to 755
+copying src/transformers.egg-info/PKG-INFO -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying src/transformers.egg-info/SOURCES.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying src/transformers.egg-info/dependency_links.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying src/transformers.egg-info/requires.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying src/transformers.egg-info/top_level.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+creating dist
+creating 'dist/transformers-2.8.0-py3.6.egg' and adding 'build/bdist.linux-x86_64/egg' to it
+removing 'build/bdist.linux-x86_64/egg' (and everything under it)
+Processing transformers-2.8.0-py3.6.egg
+removing '/home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages/transformers-2.8.0-py3.6.egg' (and everything under it)
+creating /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages/transformers-2.8.0-py3.6.egg
+Extracting transformers-2.8.0-py3.6.egg to /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+transformers 2.8.0 is already the active version in easy-install.pth
+Installing transformers-cli script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+
+Installed /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages/transformers-2.8.0-py3.6.egg
+Processing dependencies for transformers==2.8.0
+Searching for dataclasses==0.8
+Best match: dataclasses 0.8
+Adding dataclasses 0.8 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for sacremoses==0.0.45
+Best match: sacremoses 0.0.45
+Adding sacremoses 0.0.45 to easy-install.pth file
+Installing sacremoses script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for sentencepiece==0.1.96
+Best match: sentencepiece 0.1.96
+Adding sentencepiece 0.1.96 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for regex==2021.7.6
+Best match: regex 2021.7.6
+Adding regex 2021.7.6 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for tqdm==4.61.2
+Best match: tqdm 4.61.2
+Adding tqdm 4.61.2 to easy-install.pth file
+Installing tqdm script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for requests==2.26.0
+Best match: requests 2.26.0
+Adding requests 2.26.0 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for filelock==3.0.12
+Best match: filelock 3.0.12
+Adding filelock 3.0.12 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for boto3==1.18.6
+Best match: boto3 1.18.6
+Adding boto3 1.18.6 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for tokenizers==0.7.0rc5
+Best match: tokenizers 0.7.0rc5
+Adding tokenizers 0.7.0rc5 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for numpy==1.19.5
+Best match: numpy 1.19.5
+Adding numpy 1.19.5 to easy-install.pth file
+Installing f2py script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+Installing f2py3 script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+Installing f2py3.6 script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for click==7.1.2
+Best match: click 7.1.2
+Adding click 7.1.2 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for six==1.16.0
+Best match: six 1.16.0
+Adding six 1.16.0 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for joblib==1.0.1
+Best match: joblib 1.0.1
+Adding joblib 1.0.1 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for urllib3==1.26.6
+Best match: urllib3 1.26.6
+Adding urllib3 1.26.6 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for idna==3.2
+Best match: idna 3.2
+Adding idna 3.2 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for charset-normalizer==2.0.3
+Best match: charset-normalizer 2.0.3
+Adding charset-normalizer 2.0.3 to easy-install.pth file
+Installing normalizer script to /home2/kyao/anaconda3_this/envs/cc_env3613/bin
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for certifi==2021.5.30
+Best match: certifi 2021.5.30
+Adding certifi 2021.5.30 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for s3transfer==0.5.0
+Best match: s3transfer 0.5.0
+Adding s3transfer 0.5.0 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for botocore==1.21.6
+Best match: botocore 1.21.6
+Adding botocore 1.21.6 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for jmespath==0.10.0
+Best match: jmespath 0.10.0
+Adding jmespath 0.10.0 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Searching for python-dateutil==2.8.2
+Best match: python-dateutil 2.8.2
+Adding python-dateutil 2.8.2 to easy-install.pth file
+
+Using /home2/kyao/anaconda3_this/envs/cc_env3613/lib/python3.6/site-packages
+Finished processing dependencies for transformers==2.8.0
+Processing MRPC...
+	Completed!
+mlp-spr-05
+NAME="CentOS Linux"
+VERSION="8 (Core)"
+ID="centos"
+ID_LIKE="rhel fedora"
+VERSION_ID="8"
+PLATFORM_ID="platform:el8"
+PRETTY_NAME="CentOS Linux 8 (Core)"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:centos:centos:8"
+HOME_URL="https://www.centos.org/"
+BUG_REPORT_URL="https://bugs.centos.org/"
+
+CENTOS_MANTISBT_PROJECT="CentOS-8"
+CENTOS_MANTISBT_PROJECT_VERSION="8"
+REDHAT_SUPPORT_PRODUCT="centos"
+REDHAT_SUPPORT_PRODUCT_VERSION="8"
+
+1
+performance
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              64
+On-line CPU(s) list: 0-63
+Thread(s) per core:  1
+Core(s) per socket:  32
+Socket(s):           2
+NUMA node(s):        2
+Vendor ID:           GenuineIntel
+CPU family:          6
+Model:               143
+Model name:          Genuine Intel(R) CPU $0000%@
+Stepping:            2
+CPU MHz:             2900.000
+CPU max MHz:         2900.0000
+CPU min MHz:         800.0000
+BogoMIPS:            1800.00
+Virtualization:      VT-x
+L1d cache:           48K
+L1i cache:           32K
+L2 cache:            2048K
+L3 cache:            61440K
+NUMA node0 CPU(s):   0-31
+NUMA node1 CPU(s):   32-63
+Flags:               fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves xfd cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx2_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts hwp hwp_act_window hwp_epp hwp_pkg_req intel_hfi avx512vbmi umip pku ospke waitpkg avx512_vbmi2 shstk gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid cldemote movdiri movdir64b enqcmd pks fsrm uintr avx512_vp2intersect md_clear serialize tsxldtrk pconfig arch_lbr ibt amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
+Linux mlp-spr-05 5.10.0-intel-next-04536-g92c07f4cb486 #1 SMP Mon May 3 21:18:11 PDT 2021 x86_64 x86_64 x86_64 GNU/Linux
+              total        used        free      shared  buff/cache   available
+Mem:          251Gi       4.3Gi       190Gi        33Mi        57Gi       245Gi
+Swap:            0B          0B          0B
+available: 2 nodes (0-1)
+node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+node 0 size: 128744 MB
+node 0 free: 76972 MB
+node 1 cpus: 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63
+node 1 size: 128980 MB
+node 1 free: 117644 MB
+node distances:
+node   0   1 
+  0:  10  21 
+  1:  21  10 
+Package                    Version             Location
+-------------------------- ------------------- -----------------------------------------------
+absl-py                    0.12.0
+albumentations             1.0.3
+astunparse                 1.6.3
+attrdict                   2.0.1
+attrs                      21.2.0
+axial-positional-embedding 0.2.1
+blis                       0.7.4
+bokeh                      1.4.0
+boto3                      1.18.6
+botocore                   1.21.6
+cached-property            1.5.2
+cachetools                 4.2.2
+catalogue                  2.0.4
+certifi                    2021.5.30
+cffi                       1.14.6
+charset-normalizer         2.0.3
+click                      7.1.2
+cmake                      3.20.5
+contextvars                2.4
+cycler                     0.10.0
+cymem                      2.0.5
+Cython                     0.29.24
+dataclasses                0.8
+decorator                  4.4.2
+dill                       0.3.4
+einops                     0.3.0
+facenet-pytorch            2.2.9
+fairseq                    0.9.0               /home2/kyao/ebp/PT/conv-seq-seq
+filelock                   3.0.12
+Flask                      2.0.1
+future                     0.18.2
+geffnet                    0.9.9
+gensim                     4.0.1
+google-auth                1.33.1
+google-auth-oauthlib       0.4.4
+googleapis-common-protos   1.53.0
+grpcio                     1.39.0
+h5py                       3.1.0
+hdbscan                    0.8.27
+idna                       3.2
+imageio                    2.9.0
+immutables                 0.15
+importlib-metadata         4.6.1
+importlib-resources        5.2.0
+imutils                    0.5.4
+iniconfig                  1.1.1
+intel-openmp               2021.3.0
+itsdangerous               2.0.1
+Jinja2                     3.0.1
+jmespath                   0.10.0
+joblib                     1.0.1
+kiwisolver                 1.3.1
+librosa                    0.6.2
+local-attention            1.4.3
+Markdown                   3.3.4
+MarkupSafe                 2.0.1
+matplotlib                 3.3.4
+mkl                        2021.3.0
+mlperf-compliance          0.0.10
+murmurhash                 1.0.5
+networkx                   2.5.1
+nltk                       3.6.2
+numpy                      1.19.5
+oauthlib                   3.1.1
+opencv-contrib-python      4.5.3.56
+opencv-python-headless     4.5.3.56
+packaging                  21.0
+pandas                     1.1.5
+pathy                      0.6.0
+phonemizer                 2.2.2
+Pillow                     8.3.1
+pip                        21.1.3
+pluggy                     0.13.1
+portalocker                2.0.0
+preshed                    3.0.5
+product-key-memory         0.1.10
+promise                    2.3
+protobuf                   3.17.3
+psutil                     5.8.0
+py                         1.10.0
+pyasn1                     0.4.8
+pyasn1-modules             0.2.8
+pycocotools                2.0.2
+pycparser                  2.20
+pydantic                   1.8.2
+pyparsing                  2.4.7
+pytest                     6.2.4
+python-dateutil            2.8.2
+pytorch-widedeep           0.3.7               /home2/kyao/extended-broad-product/PT/wide_deep
+pytorch3dunet              1.2.10
+pytz                       2021.1
+PyWavelets                 1.1.1
+PyYAML                     5.4.1
+reformer-pytorch           1.4.2
+regex                      2021.7.6
+requests                   2.26.0
+requests-oauthlib          1.3.0
+rouge-score                0.0.4
+rsa                        4.7.2
+s3transfer                 0.5.0
+sacrebleu                  1.5.1
+sacremoses                 0.0.45
+scikit-image               0.17.2
+scikit-learn               0.24.2
+scipy                      1.5.4
+segments                   2.2.0
+sentencepiece              0.1.96
+seqeval                    1.2.2
+setuptools                 52.0.0.post20210125
+six                        1.16.0
+smart-open                 5.1.0
+SoundFile                  0.10.3.post1
+spacy                      3.1.1
+spacy-legacy               3.0.8
+srsly                      2.4.1
+tbb                        2021.3.0
+tensorboard                2.5.0
+tensorboard-data-server    0.6.1
+tensorboard-plugin-wit     1.8.0
+tensorboardX               2.4
+tensorflow-datasets        4.3.0
+tensorflow-metadata        1.1.0
+termcolor                  1.1.0
+thinc                      8.0.8
+threadpoolctl              2.2.0
+tifffile                   2020.9.3
+tokenizers                 0.7.0rc5
+toml                       0.10.2
+torch                      1.10.0a0+gitad18cf9 /home2/kyao/pytorch-spr
+torchvision                0.10.0
+tornado                    6.1
+tqdm                       4.61.2
+transformers               2.8.0
+TTS                        0.0.1+fab74dd       /home2/kyao/ebp/PT/TTS/tts_namespace
+typer                      0.3.2
+typing-extensions          3.10.0.0
+Unidecode                  0.4.20
+urllib3                    1.26.6
+wasabi                     0.8.2
+Werkzeug                   2.0.1
+wheel                      0.36.2
+XlsxWriter                 1.4.4
+zipp                       3.5.0
+origin	https://github.com/huggingface/transformers.git (fetch)
+origin	https://github.com/huggingface/transformers.git (push)
+* (HEAD detached at 7972a4019)
+  master
+framework, model_name, mode_name, precision, batch_size, cores_per_instance, instance, throughput, comp_time, mem_time, link, 
+albert
+bf16_train_cpu=1, start to train bf16 on cpu
+countcheck =  1
+training latency: 591.267 ms on 0 epoch
+training throughput: 1.691 fps on 0 epoch
+countcheck =  2
+training latency: 516.158 ms on 0 epoch
+training throughput: 1.937 fps on 0 epoch
+countcheck =  3
+training latency: 511.908 ms on 0 epoch
+training throughput: 1.953 fps on 0 epoch
+countcheck =  4
+training latency: 487.595 ms on 0 epoch
+training throughput: 2.051 fps on 0 epoch
+countcheck =  5
+roberta
+bf16_train_cpu=1, start to train bf16 on cpu
+countcheck =  1
+training latency: 452.291 ms on 0 epoch
+training throughput: 2.211 fps on 0 epoch
+countcheck =  2
+training latency: 411.712 ms on 0 epoch
+training throughput: 2.429 fps on 0 epoch
+countcheck =  3
+training latency: 398.689 ms on 0 epoch
+training throughput: 2.508 fps on 0 epoch
+countcheck =  4
+training latency: 392.038 ms on 0 epoch
+training throughput: 2.551 fps on 0 epoch
+countcheck =  5
+xlm-roberta
+bf16_train_cpu=1, start to train bf16 on cpu
+countcheck =  1
+training latency: 373.730 ms on 0 epoch
+training throughput: 2.676 fps on 0 epoch
+countcheck =  2
+training latency: 399.076 ms on 0 epoch
+training throughput: 2.506 fps on 0 epoch
+countcheck =  3
+training latency: 387.560 ms on 0 epoch
+training throughput: 2.580 fps on 0 epoch
+countcheck =  4
+training latency: 415.113 ms on 0 epoch
+training throughput: 2.409 fps on 0 epoch
+countcheck =  5
+xlnet
+bf16_train_cpu=1, start to train bf16 on cpu
+countcheck =  1
+training latency: 835.914 ms on 0 epoch
+training throughput: 1.196 fps on 0 epoch
+countcheck =  2
+training latency: 1053.216 ms on 0 epoch
+training throughput: 0.949 fps on 0 epoch
+countcheck =  3
+training latency: 1223.603 ms on 0 epoch
+training throughput: 0.817 fps on 0 epoch
+countcheck =  4
+training latency: 1240.505 ms on 0 epoch
+training throughput: 0.806 fps on 0 epoch
+countcheck =  5

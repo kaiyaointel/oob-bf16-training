@@ -1,0 +1,271 @@
+diff --git a/pytorch3dunet/predict.py b/pytorch3dunet/predict.py
+index 36d06de..5d609a5 100755
+--- a/pytorch3dunet/predict.py
++++ b/pytorch3dunet/predict.py
+@@ -1,5 +1,6 @@
+ import importlib
+ import os
++import time
+ 
+ import torch
+ import torch.nn as nn
+@@ -58,17 +59,45 @@ def main():
+         logger.info(f'Using {torch.cuda.device_count()} GPUs for prediction')
+ 
+     logger.info(f"Sending the model to '{device}'")
+-    model = model.to(device)
+-
++    # model = model.to(device)
+     logger.info('Loading HDF5 datasets...')
+-    for test_loader in get_test_loaders(config):
++    data_sum = 0
++    time_sum = 0
++    assert 'loaders' in config, 'Could not find data loaders configuration'
++    loaders_config = config['loaders']
++    batch_size = loaders_config.get('batch_size', 1)
++    print("Batch Size: {}".format(batch_size))
++    if config['ipex']:
++        import intel_pytorch_extension as ipex
++        print('Running with IPEX...')
++        model = model.to(ipex.DEVICE)
++        if config['precision'] == 'bfloat16':
++            # Automatically mix precision
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Running with bfloat16...')
++    elif config['channels_last']:
++        if config['precision'] == 'bfloat16':
++            # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++            print('Running with bfloat16...')
++        model_oob = model
++        try:
++            model_oob = model_oob.to(memory_format=torch.channels_last)
++        except:
++            print("Model NHWC failed! Use normal model.")
++        model = model_oob
++
++    for index, test_loader in enumerate(get_test_loaders(config)):
+         logger.info(f"Processing '{test_loader.dataset.file_path}'...")
+ 
+         output_file = _get_output_file(test_loader.dataset)
+-
+         predictor = _get_predictor(model, test_loader, output_file, config)
+         # run the model prediction on the entire dataset and save to the 'output_file' H5
+-        predictor.predict()
++        iter_time, iter_data = predictor.predict()
++        data_sum += iter_data
++        time_sum += iter_time
++
++    print(" time cost %s\n inference latency: %.2fs\n inference Throughput: %.2f images/s\n "
++            %(time_sum, time_sum /data_sum, data_sum / time_sum))
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/pytorch3dunet/unet3d/config.py b/pytorch3dunet/unet3d/config.py
+index b3c0683..5339234 100644
+--- a/pytorch3dunet/unet3d/config.py
++++ b/pytorch3dunet/unet3d/config.py
+@@ -11,8 +11,20 @@ logger = utils.get_logger('ConfigLoader')
+ def load_config():
+     parser = argparse.ArgumentParser(description='UNet3D')
+     parser.add_argument('--config', type=str, help='Path to the YAML config file', required=True)
++    parser.add_argument('--ipex', action='store_true', help='Use intel pytorch extension.')
++    parser.add_argument('--jit', action='store_true', help='enable jit optimization in intel pytorch extension.')
++    parser.add_argument('--profiling', action='store_true', help='Do profiling.')
++    parser.add_argument('--batch_size', type=int, default=1, help='input batch size.')
++    parser.add_argument('--num_iter', type=int, default=0, help='num of warmup, default is 10.')
++    parser.add_argument('--num_warmup', type=int, default=10, help='num of warmup, default is 10.')
++    parser.add_argument('--precision', type=str, default='float32', help='data type precision, default is float32.')
++    parser.add_argument('--channels_last', type=int, default=1, help='Use NHWC.')
++    parser.add_argument('--arch', type=str, default=None, help='model name.')
++    parser.add_argument('--profile', action='store_true', default=False)
++
+     args = parser.parse_args()
+     config = _load_config_yaml(args.config)
++    print(config)
+     # Get a device to train on
+     device_str = config.get('device', None)
+     if device_str is not None:
+@@ -26,6 +38,15 @@ def load_config():
+ 
+     device = torch.device(device_str)
+     config['device'] = device
++    config['loaders']['batch_size'] = args.batch_size
++    config['ipex'] = args.ipex
++    config['num_iter'] = args.num_iter
++    config['num_warmup'] = args.num_warmup
++    config['jit'] = args.jit
++    config['profiling'] = args.profiling
++    config['precision'] = args.precision
++    config['channels_last'] = args.channels_last
++    config['profile'] = args.profile
+     return config
+ 
+ 
+diff --git a/pytorch3dunet/unet3d/predictor.py b/pytorch3dunet/unet3d/predictor.py
+index 84c19ac..8314d61 100644
+--- a/pytorch3dunet/unet3d/predictor.py
++++ b/pytorch3dunet/unet3d/predictor.py
+@@ -1,5 +1,5 @@
+ import time
+-
++import os
+ import h5py
+ import hdbscan
+ import numpy as np
+@@ -89,64 +89,84 @@ class StandardPredictor(_AbstractPredictor):
+         self._validate_halo(patch_halo, self.config['loaders']['test']['slice_builder'])
+         logger.info(f'Using patch_halo: {patch_halo}')
+ 
+-        # create destination H5 file
+-        h5_output_file = h5py.File(self.output_file, 'w')
+-        # allocate prediction and normalization arrays
+-        logger.info('Allocating prediction and normalization arrays...')
+-        prediction_maps, normalization_masks = self._allocate_prediction_maps(prediction_maps_shape,
+-                                                                              output_heads, h5_output_file)
+-
+         # Sets the module in evaluation mode explicitly (necessary for batchnorm/dropout layers if present)
+         self.model.eval()
+         # Set the `testing=true` flag otherwise the final Softmax/Sigmoid won't be applied!
+         self.model.testing = True
+         # Run predictions on the entire input dataset
++        total_time = 0
++        total_samples = 0
++
+         with torch.no_grad():
+-            for batch, indices in self.loader:
++            for index, (batch, indices) in enumerate(self.loader):
++                if self.config['num_iter'] > 0 and index >= self.config['num_iter']:
++                    break
+                 # send batch to device
+-                batch = batch.to(device)
++                if self.config['ipex']:
++                    try:
++                        import intel_pytorch_extension as ipex
++                    except:
++                        print("No module: intel_pytorch_extension")
++                    batch = batch.to(ipex.DEVICE)
++                ### to_oob
++                if self.config['channels_last']:
++                    model_oob, input_oob = self.model, batch
++                    try:
++                        input_oob = input_oob.to(memory_format=torch.channels_last)
++                    except:
++                        print("Input NHWC failed! Use normal input.")
++                    # transfer to jit model at the first iter
++                    if index == 0  and self.config['jit']:
++                        try:
++                            model_oob = torch.jit.trace(model_oob.eval(),input_oob)
++                        except:
++                            print("Can't convert to jit model...")
++
++                        self.model, batch = model_oob, input_oob
++
++                # if index >= self.config['num_warmup']:
++                tic = time.time()
+ 
+                 # forward pass
+-                predictions = self.model(batch)
+-
++                if self.config['profile']:
++                    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                        if self.config['precision'] == "bfloat16":
++                            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                                predictions = self.model(batch)
++                        else:
++                            predictions = self.model(batch)
++                else:
++                    if self.config['precision'] == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            predictions = self.model(batch)
++                    else:
++                        predictions = self.model(batch)
+                 # wrap predictions into a list if there is only one output head from the network
+                 if output_heads == 1:
+                     predictions = [predictions]
+ 
+-                # for each output head
+-                for prediction, prediction_map, normalization_mask in zip(predictions, prediction_maps,
+-                                                                          normalization_masks):
+-
+-                    # convert to numpy array
+-                    prediction = prediction.cpu().numpy()
+-
+-                    # for each batch sample
+-                    for pred, index in zip(prediction, indices):
+-                        # save patch index: (C,D,H,W)
+-                        if prediction_channel is None:
+-                            channel_slice = slice(0, out_channels)
+-                        else:
+-                            channel_slice = slice(0, 1)
+-                        index = (channel_slice,) + index
+-
+-                        if prediction_channel is not None:
+-                            # use only the 'prediction_channel'
+-                            logger.info(f"Using channel '{prediction_channel}'...")
+-                            pred = np.expand_dims(pred[prediction_channel], axis=0)
+-
+-                        logger.info(f'Saving predictions for slice:{index}...')
+-
+-                        # remove halo in order to avoid block artifacts in the output probability maps
+-                        u_prediction, u_index = remove_halo(pred, index, volume_shape, patch_halo)
+-                        # accumulate probabilities into the output prediction array
+-                        prediction_map[u_index] += u_prediction
+-                        # count voxel visits for normalization
+-                        normalization_mask[u_index] += 1
+-
+-        # save results to
+-        self._save_results(prediction_maps, normalization_masks, output_heads, h5_output_file, self.loader.dataset)
+-        # close the output H5 file
+-        h5_output_file.close()
++                toc = time.time()
++                print("Iteration: {}, inference time: {} sec.".format(index, toc - tic))
++                if index >= self.config['num_warmup']:
++                    total_time += toc - tic
++                    total_samples += batch.size()[0]
++            #
++            if self.config['profile']:
++                import pathlib
++                timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++                if not os.path.exists(timeline_dir):
++                    os.makedirs(timeline_dir)
++                timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                            str(index + 1) + '-' + str(os.getpid()) + '.json'
++                print(timeline_file)
++                prof.export_chrome_trace(timeline_file)
++                # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++                # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++        if self.config['profiling']:
++            print(prof.key_averages().table(sort_by="self_cpu_time_total"))
++
++        return total_time, total_samples
+ 
+     def _allocate_prediction_maps(self, output_shape, output_heads, output_file):
+         # initialize the output prediction arrays
+@@ -188,6 +208,26 @@ class StandardPredictor(_AbstractPredictor):
+         assert np.all(
+             patch_overlap - patch_halo >= 0), f"Not enough patch overlap for stride: {stride} and halo: {patch_halo}"
+ 
++    def save_profile_result(self, filename, table):
++        import xlsxwriter
++        workbook = xlsxwriter.Workbook(filename)
++        worksheet = workbook.add_worksheet()
++        keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++                "CPU time avg", "Number of Calls"]
++        for j in range(len(keys)):
++            worksheet.write(0, j, keys[j])
++
++        lines = table.split("\n")
++        for i in range(3, len(lines)-4):
++            words = lines[i].split(" ")
++            j = 0
++            for word in words:
++                if not word == "":
++                    worksheet.write(i-2, j, word)
++                    j += 1
++        workbook.close()
++
++
+ 
+ class LazyPredictor(StandardPredictor):
+     """

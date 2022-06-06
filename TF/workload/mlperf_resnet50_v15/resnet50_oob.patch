@@ -1,0 +1,24 @@
+From bea53a10e2af4097ad49d3f32ccb644c2c4ff522 Mon Sep 17 00:00:00 2001
+From: shwetaoj <shweta.ojha@intel.com>
+Date: Fri, 20 Nov 2020 12:22:56 -0800
+Subject: [PATCH] resnet50_oob
+
+---
+ vision/classification_and_detection/python/main.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/vision/classification_and_detection/python/main.py b/vision/classification_and_detection/python/main.py
+index cd6825f..f748df7 100755
+--- a/vision/classification_and_detection/python/main.py
++++ b/vision/classification_and_detection/python/main.py
+@@ -398,6 +398,7 @@ def add_results(final_results, name, result_dict, result_list, took, show_accura
+     print("{} qps={:.2f}, mean={:.4f}, time={:.3f}{}, queries={}, tiles={}".format(
+         name, result["qps"], result["mean"], took, acc_str,
+         len(result_list), buckets_str))
++    print("Throughput is: %f" % result["qps"])
+ 
+ 
+ def main():
+-- 
+2.17.1
+

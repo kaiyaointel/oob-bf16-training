@@ -1,0 +1,112 @@
+diff --git a/datasets/voc0712.py b/datasets/voc0712.py
+index 4814754..3c4a40d 100644
+--- a/datasets/voc0712.py
++++ b/datasets/voc0712.py
+@@ -84,7 +84,7 @@ class VOCDetection(data.Dataset):
+     """
+ 
+     def __init__(self, root,
+-                 image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
++                 image_sets=[('2007', 'train_test'), ('2007', 'train_test')],
+                  transform=None, target_transform=VOCAnnotationTransform(),
+                  dataset_name='VOC0712'):
+         self.root = root
+@@ -98,11 +98,11 @@ class VOCDetection(data.Dataset):
+         for (year, name) in image_sets:
+             rootpath = osp.join(self.root, 'VOC' + year)
+             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
+-                self.ids.append((rootpath, line.strip()))
++                #print(line[0:6])
++                self.ids.append((rootpath, line[0:6].strip()))
+ 
+     def __getitem__(self, index):
+         img_id = self.ids[index]
+-
+         target = ET.parse(self._annopath % img_id).getroot()
+         img = cv2.imread(self._imgpath % img_id)
+         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+diff --git a/models/losses.py b/models/losses.py
+index 99b9cfd..6a1ecac 100644
+--- a/models/losses.py
++++ b/models/losses.py
+@@ -52,8 +52,8 @@ class FocalLoss(nn.Module):
+             bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]
+ 
+             if bbox_annotation.shape[0] == 0:
+-                regression_losses.append(torch.tensor(0).float().cuda())
+-                classification_losses.append(torch.tensor(0).float().cuda())
++                regression_losses.append(torch.tensor(0).float())
++                classification_losses.append(torch.tensor(0).float())
+ 
+                 continue
+ 
+@@ -69,7 +69,6 @@ class FocalLoss(nn.Module):
+ 
+             # compute the loss for classification
+             targets = torch.ones(classification.shape) * -1
+-            targets = targets.cuda()
+ 
+             targets[torch.lt(IoU_max, 0.4), :] = 0
+ 
+@@ -83,7 +82,7 @@ class FocalLoss(nn.Module):
+             targets[positive_indices,
+                     assigned_annotations[positive_indices, 4].long()] = 1
+ 
+-            alpha_factor = torch.ones(targets.shape).cuda() * alpha
++            alpha_factor = torch.ones(targets.shape) * alpha
+ 
+             alpha_factor = torch.where(
+                 torch.eq(targets, 1.), alpha_factor, 1. - alpha_factor)
+@@ -98,7 +97,7 @@ class FocalLoss(nn.Module):
+             cls_loss = focal_weight * bce
+ 
+             cls_loss = torch.where(
+-                torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
++                torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape))
+ 
+             classification_losses.append(
+                 cls_loss.sum()/torch.clamp(num_positive_anchors.float(), min=1.0))
+@@ -133,7 +132,7 @@ class FocalLoss(nn.Module):
+                     (targets_dx, targets_dy, targets_dw, targets_dh))
+                 targets = targets.t()
+ 
+-                targets = targets/torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).cuda()
++                targets = targets/torch.Tensor([[0.1, 0.1, 0.2, 0.2]])
+ 
+                 negative_indices = 1 + (~positive_indices)
+ 
+@@ -147,6 +146,6 @@ class FocalLoss(nn.Module):
+                 )
+                 regression_losses.append(regression_loss.mean())
+             else:
+-                regression_losses.append(torch.tensor(0).float().cuda())
++                regression_losses.append(torch.tensor(0).float())
+ 
+         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
+diff --git a/models/utils.py b/models/utils.py
+index 34c8649..5be5d72 100644
+--- a/models/utils.py
++++ b/models/utils.py
+@@ -303,14 +303,14 @@ def get_model_params(model_name, override_params):
+ 
+ 
+ url_map = {
+-    'efficientnet-b0': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b0-355c32eb.pth',
+-    'efficientnet-b1': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b1-f1951068.pth',
+-    'efficientnet-b2': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b2-8bb594d6.pth',
+-    'efficientnet-b3': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b3-5fb5a3c3.pth',
+-    'efficientnet-b4': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b4-6ed6700e.pth',
+-    'efficientnet-b5': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b5-b6417697.pth',
+-    'efficientnet-b6': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b6-c76e70fd.pth',
+-    'efficientnet-b7': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b7-dcc49843.pth',
++    'efficientnet-b0': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b0-355c32eb.pth',
++    'efficientnet-b1': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b1-f1951068.pth',
++    'efficientnet-b2': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b2-8bb594d6.pth',
++    'efficientnet-b3': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b3-5fb5a3c3.pth',
++    'efficientnet-b4': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b4-6ed6700e.pth',
++    'efficientnet-b5': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b5-b6417697.pth',
++    'efficientnet-b6': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b6-c76e70fd.pth',
++    'efficientnet-b7': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth',
+ }
+ 
+ 

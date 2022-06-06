@@ -1,0 +1,12 @@
+Cython
+mlperf-compliance
+cycler
+kiwisolver
+matplotlib
+numpy
+Pillow
+pyparsing
+python-dateutil
+pytz
+six
+pycocotools

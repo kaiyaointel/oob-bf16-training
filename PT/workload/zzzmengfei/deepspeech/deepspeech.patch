@@ -1,0 +1,284 @@
+diff --git a/speech_recognition/pytorch/decoder.py b/speech_recognition/pytorch/decoder.py
+index 890407c..72e485b 100644
+--- a/speech_recognition/pytorch/decoder.py
++++ b/speech_recognition/pytorch/decoder.py
+@@ -48,7 +48,7 @@ class Decoder(object):
+         return strings
+ 
+     def _convert_to_string(self, sequence, sizes):
+-        return ''.join([self.int_to_char[sequence[i]] for i in range(sizes)])
++        return ''.join([self.int_to_char[sequence[i].item()] for i in range(sizes)])
+ 
+     def process_strings(self, sequences, remove_repetitions=False):
+         """
+diff --git a/speech_recognition/pytorch/eval_model.py b/speech_recognition/pytorch/eval_model.py
+index 0b75604..80ea318 100644
+--- a/speech_recognition/pytorch/eval_model.py
++++ b/speech_recognition/pytorch/eval_model.py
+@@ -1,5 +1,5 @@
+ import json
+-
++import os
+ import torch
+ from torch.autograd import Variable
+ from warpctc_pytorch import CTCLoss
+@@ -7,6 +7,7 @@ from warpctc_pytorch import CTCLoss
+ import torch.nn.functional as F
+ 
+ import sys
++import time
+ ### Import Data Utils ###
+ sys.path.append('../')
+ 
+@@ -16,13 +17,28 @@ from decoder import GreedyDecoder
+ from model import DeepSpeech, supported_rnns
+ from params import cuda
+ 
+-def eval_model(model, test_loader, decoder):
++def eval_model(model, test_loader, decoder, args, device="cpu", batch_time=None):
+         start_iter = 0  # Reset start iteration for next epoch
+         total_cer, total_wer = 0, 0
++        if args.channels_last:
++            oob_model = model
++            oob_model = oob_model.to(memory_format=torch.channels_last)
++            model = oob_model
++            print("---- Use the channels last format.")
+         model.eval()
+         for i, (data) in enumerate(test_loader):  # test
++            if args.eval_iter != 0 and i > args.eval_iter:
++                break
++            if i >= args.eval_warmup and batch_time is not None:
++                start = time.time()
+             inputs, targets, input_percentages, target_sizes = data
+ 
++            # channels last format
++            if args.channels_last:
++                oob_inputs = inputs
++                oob_inputs = oob_inputs.to(memory_format=torch.channels_last)
++                inputs = oob_inputs
++
+             inputs = Variable(inputs, volatile=True)
+ 
+             # unflatten targets
+@@ -32,16 +48,34 @@ def eval_model(model, test_loader, decoder):
+                 split_targets.append(targets[offset:offset + size])
+                 offset += size
+ 
+-            if cuda:
+-                inputs = inputs.cuda()
++            # if cuda:
++            #     inputs = inputs.cuda()
++
++            inputs = inputs.to(device)
++
++            if args.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            out = model(inputs)
++                    else:
++                        out = model(inputs)
++            else:
++                if args.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        out = model(inputs)
++                else:
++                    out = model(inputs)
+ 
+-            out = model(inputs)
++            #out = model(inputs)
+             out = out.transpose(0, 1)  # TxNxH
+             seq_length = out.size(0)
+             sizes = input_percentages.mul_(int(seq_length)).int()
+ 
+             decoded_output = decoder.decode(out.data, sizes)
+             target_strings = decoder.process_strings(decoder.convert_to_strings(split_targets))
++            if i >= args.eval_warmup and batch_time is not None:
++                batch_time.update(time.time() - start)
+             wer, cer = 0, 0
+             for x in range(len(target_strings)):
+                 wer += decoder.wer(decoded_output[x], target_strings[x]) / float(len(target_strings[x].split()))
+@@ -49,7 +83,7 @@ def eval_model(model, test_loader, decoder):
+             total_cer += cer
+             total_wer += wer
+ 
+-            if cuda:
++            if device == "cuda":
+                 torch.cuda.synchronize()
+             del out
+         wer = total_wer / len(test_loader.dataset)
+@@ -57,4 +91,35 @@ def eval_model(model, test_loader, decoder):
+         wer *= 100
+         cer *= 100
+ 
++        if args.profile:
++            import pathlib
++            timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++            if not os.path.exists(timeline_dir):
++                os.makedirs(timeline_dir)
++            timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                        args.arch + str(i) + '-' + str(os.getpid()) + '.json'
++            print(timeline_file)
++            prof.export_chrome_trace(timeline_file)
++            # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++            # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
+         return wer, cer
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
+diff --git a/speech_recognition/pytorch/model.py b/speech_recognition/pytorch/model.py
+index 0714e86..4d9774c 100644
+--- a/speech_recognition/pytorch/model.py
++++ b/speech_recognition/pytorch/model.py
+@@ -140,12 +140,12 @@ class DeepSpeech(nn.Module):
+         num_classes = len(self._labels)
+ 
+         self.conv = nn.Sequential(
+-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2)),
++            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(0, 5)),
+             nn.BatchNorm2d(32),
+-            nn.Hardtanh(0, 20, inplace=True),
+-            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1)),
++            nn.Hardtanh(0.0, 20.0, inplace=True),
++            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(0, 5)),
+             nn.BatchNorm2d(32),
+-            nn.Hardtanh(0, 20, inplace=True)
++            nn.Hardtanh(0.0, 20.0, inplace=True)
+         )
+         # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
+         rnn_input_size = int(math.floor((sample_rate * window_size) / 2) + 1)
+@@ -197,7 +197,7 @@ class DeepSpeech(nn.Module):
+         x = self.conv(x)
+ 
+         sizes = x.size()
+-        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # Collapse feature dimension
++        x = x.reshape(sizes[0], sizes[1] * sizes[2], sizes[3])  # Collapse feature dimension
+         x = x.transpose(1, 2).transpose(0, 1).contiguous()  # TxNxH
+ 
+         x = self.rnns(x)
+diff --git a/speech_recognition/pytorch/train.py b/speech_recognition/pytorch/train.py
+index d9e7036..af22293 100644
+--- a/speech_recognition/pytorch/train.py
++++ b/speech_recognition/pytorch/train.py
+@@ -9,6 +9,7 @@ import sys
+ import numpy as np
+ 
+ import torch
++# import intel_pytorch_extension as ipex
+ from torch.autograd import Variable
+ from warpctc_pytorch import CTCLoss
+ 
+@@ -41,6 +42,29 @@ parser.add_argument('--seed', default=0xdeadbeef, type=int, help='Random Seed')
+ parser.add_argument('--acc', default=23.0, type=float, help='Target WER')
+ 
+ parser.add_argument('--start_epoch', default=-1, type=int, help='Number of epochs at which to start from')
++parser.add_argument('--batch_size', default=1, type=int, help='batch size to inference')
++parser.add_argument('--ipex', action='store_true', default=False,
++                    help='use intel pytorch extension')
++parser.add_argument('--precision', type=str, default="float32",
++                    help='precision, float32, bfloat16')
++parser.add_argument('--arch', type=str, default="",
++                    help='model name')
++parser.add_argument('--eval_iter', type=int, default=0,
++                    help='iter')
++parser.add_argument('--eval_warmup', type=int, default=5,
++                    help='warmup')
++parser.add_argument('--jit', action='store_true', default=False,
++                    help='enable ipex jit fusionpath')
++parser.add_argument('--cuda', action='store_true', default=False,
++                    help='use CUDA')
++parser.add_argument('--evaluate', action='store_true', default=False,
++                    help='evaluate only')
++parser.add_argument('--channels_last', type=int, default=1,
++                    help='use the channels last')
++parser.add_argument('--profile', action='store_true', default=False,
++                    help='')
++
++
+ 
+ def to_np(x):
+     return x.data.cpu().numpy()
+@@ -66,9 +90,19 @@ class AverageMeter(object):
+ 
+ def main():
+     args = parser.parse_args()
++    params.batch_size = args.batch_size
+ 
+     torch.manual_seed(args.seed)
+-    torch.cuda.manual_seed_all(args.seed)
++    if args.cuda:
++        torch.cuda.manual_seed_all(args.seed)
++        device = "cuda"
++    elif args.ipex:
++        import intel_pytorch_extension as ipex
++        params.cuda = False
++        device = ipex.DEVICE
++    else:
++        params.cuda = False
++        device = "cpu"
+ 
+     if params.rnn_type == 'gru' and params.rnn_act_type != 'tanh':
+       print("ERROR: GRU does not currently support activations other than tanh")
+@@ -106,12 +140,13 @@ def main():
+                       noise_prob=params.noise_prob,
+                       noise_levels=(params.noise_min, params.noise_max))
+ 
+-    train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=params.train_manifest, labels=labels,
+-                                       normalize=True, augment=params.augment)
++    if not args.evaluate:
++        train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=params.train_manifest, labels=labels,
++                                           normalize=True, augment=params.augment)
++        train_loader = AudioDataLoader(train_dataset, batch_size=params.batch_size,
++                                       num_workers=1)
+     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=params.val_manifest, labels=labels,
+                                       normalize=True, augment=False)
+-    train_loader = AudioDataLoader(train_dataset, batch_size=params.batch_size,
+-                                   num_workers=1)
+     test_loader = AudioDataLoader(test_dataset, batch_size=params.batch_size,
+                                   num_workers=1)
+ 
+@@ -133,6 +168,16 @@ def main():
+                                 weight_decay = params.l2)
+     decoder = GreedyDecoder(labels)
+ 
++    if args.evaluate:
++        model.to(device)
++        # if args.jit:
++        #     model = torch.jit.script(model)
++        #     print(model)
++        batch_time = AverageMeter()
++        wer, cer = eval_model(model, test_loader, decoder, args, device, batch_time)
++        print('inference Throughput: %0.3f samples/s' % (params.batch_size / batch_time.avg))
++        exit(0)
++
+     if args.continue_from:
+         print("Loading checkpoint model %s" % args.continue_from)
+         package = torch.load(args.continue_from)
+@@ -243,9 +288,8 @@ def main():
+ 
+         start_iter = 0  # Reset start iteration for next epoch
+         total_cer, total_wer = 0, 0
+-        model.eval()
+ 
+-        wer, cer = eval_model( model, test_loader, decoder)
++        wer, cer = eval_model( model, test_loader, decoder, args)
+ 
+         loss_results[epoch] = avg_loss
+         wer_results[epoch] = wer

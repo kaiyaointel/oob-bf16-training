@@ -1,0 +1,161 @@
+From ffc87728100b9dd36ea86bfd5336dc1d4c007004 Mon Sep 17 00:00:00 2001
+From: shwetaoj <shweta.ojha@intel.com>
+Date: Tue, 2 Feb 2021 15:34:31 -0800
+Subject: [PATCH] mlpc_elmo
+
+---
+ simple_elmo/elmo_helpers.py              | 25 ++++++++++++++++++------
+ simple_elmo/examples/get_elmo_vectors.py | 20 ++++++++++++++-----
+ 2 files changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/simple_elmo/elmo_helpers.py b/simple_elmo/elmo_helpers.py
+index 875b226..a82fe3d 100644
+--- a/simple_elmo/elmo_helpers.py
++++ b/simple_elmo/elmo_helpers.py
+@@ -8,6 +8,7 @@ import tensorflow as tf
+ import json
+ import zipfile
+ import logging
++import time
+ from simple_elmo.data import Batcher
+ from simple_elmo.model import BidirectionalLanguageModel
+ from simple_elmo.elmo import weight_layers
+@@ -27,6 +28,8 @@ class ElmoModel:
+         self.max_chars = None
+         self.vector_size = None
+         self.n_layers = None
++        self.num_warmup = None
++        self.num_iter = None
+ 
+         # We do not use eager execution from TF 2.0
+         tf.compat.v1.disable_eager_execution()
+@@ -133,7 +136,7 @@ class ElmoModel:
+ 
+         return "The model is now loaded."
+ 
+-    def get_elmo_vectors(self, texts, warmup=True, layers="average"):
++    def get_elmo_vectors(self, texts, num_iter, num_warmup, warmup=True, layers="average"):
+         """
+         :param texts: list of sentences (lists of words)
+         :param warmup: warm up the model before actual inference (by running it over the 1st batch)
+@@ -159,10 +162,11 @@ class ElmoModel:
+             sess.run(tf.compat.v1.global_variables_initializer())
+ 
+             if warmup:
+-                self.warmup(sess, texts)
++                self.warmup(sess, texts, num_warmup)
+ 
++            start = time.time()
+             # Running batches:
+-            chunk_counter = 0
++            chunk_counter = 1
+             for chunk in divide_chunks(texts, self.batch_size):
+                 # Converting sentences to character ids:
+                 sentence_ids = self.batcher.batch_sentences(chunk)
+@@ -181,7 +185,13 @@ class ElmoModel:
+                 else:
+                     final_vectors[first_row:last_row, : elmo_vectors.shape[1], :] = elmo_vectors
+                 chunk_counter += 1
++                if chunk_counter > (num_iter - num_warmup):
++                    break
+ 
++            end = time.time()
++            processing_time = int(end - start)
++            throughput = chunk_counter / processing_time
++            self.logger.info(f"Throughput in sentences/sec : {throughput}")
+             return final_vectors
+ 
+     def get_elmo_vector_average(self, texts, warmup=True, layers="average"):
+@@ -209,7 +219,7 @@ class ElmoModel:
+             sess.run(tf.compat.v1.global_variables_initializer())
+ 
+             if warmup:
+-                self.warmup(sess, texts)
++                self.warmup(sess, texts, num_warmup)
+ 
+             # Running batches:
+             for chunk in divide_chunks(texts, self.batch_size):
+@@ -249,7 +259,8 @@ class ElmoModel:
+ 
+         return average_vectors
+ 
+-    def warmup(self, sess, texts):
++    def warmup(self, sess, texts, num_warmup=10):
++        it = 1
+         for chunk0 in divide_chunks(texts, self.batch_size):
+             self.logger.info(f"Warming up ELMo on {len(chunk0)} sentences...")
+             sentence_ids = self.batcher.batch_sentences(chunk0)
+@@ -257,7 +268,9 @@ class ElmoModel:
+                 self.elmo_sentence_input["weighted_op"],
+                 feed_dict={self.sentence_character_ids: sentence_ids},
+             )
+-            break
++            it += 1
++            if it > num_warmup:
++                break
+         self.logger.info("Warming up finished.")
+ 
+ 
+diff --git a/simple_elmo/examples/get_elmo_vectors.py b/simple_elmo/examples/get_elmo_vectors.py
+index 740bb53..db9bcd1 100755
+--- a/simple_elmo/examples/get_elmo_vectors.py
++++ b/simple_elmo/examples/get_elmo_vectors.py
+@@ -14,12 +14,21 @@ if __name__ == "__main__":
+         "--input", "-i", help="Path to input text, one sentence per line", required=True
+     )
+     arg("--elmo", "-e", help="Path to ELMo model", required=True)
++    
++    arg('--num_iter', '-n', default=500, type=int,
++                   help='numbers of inference iteration (default: 500)')
++    arg("--batch", "-b", type=int, help="Max batch size", default=1)
++    arg('--num_warmup', default=10, type=int,
++                           help='numbers of warmup iteration, default is 10')
+ 
+     args = parser.parse_args()
+     data_path = args.input
++    max_batch_size = args.batch
++    num_warmup = args.num_warmup
++    num_iter = args.num_iter
+ 
+     # Process only the first k sentences
+-    max_sentences = 100
++    max_sentences = int(num_iter - num_warmup)
+ 
+     raw_sentences = []
+ 
+@@ -27,9 +36,9 @@ if __name__ == "__main__":
+         for line in f:
+             res = line.strip()
+             raw_sentences.append(res)
+-            if len(raw_sentences) > max_sentences:
++            if len(raw_sentences) >= max_sentences:
+                 break
+-    sentences = [s.split()[:100] for s in raw_sentences]
++    sentences = [s.split()[:500] for s in raw_sentences]
+ 
+     print("=====")
+     print(f"{len(sentences)} sentences total")
+@@ -37,17 +46,18 @@ if __name__ == "__main__":
+ 
+     model = ElmoModel()
+ 
+-    model.load(args.elmo)
++    model.load(args.elmo, max_batch_size=max_batch_size)
+ 
+     # Actually producing ELMo embeddings for our data:
+     start = time.time()
+-    elmo_vectors = model.get_elmo_vectors(sentences, layers="average")
++    elmo_vectors = model.get_elmo_vectors(sentences, num_iter, num_warmup, warmup=True, layers="average")
+     end = time.time()
+ 
+     processing_time = int(end - start)
+ 
+     print(f"ELMo embeddings for your input are ready in {processing_time} seconds")
+     print(f"Tensor shape: {elmo_vectors.shape}")
++    print('Throughput: {:.2f} sentences/sec'.format( max_sentences / processing_time))
+ 
+     # Due to batch processing, the above code produces for each sentence
+     # the same number of token vectors, equal to the length of the longest sentence
+-- 
+2.17.1
+

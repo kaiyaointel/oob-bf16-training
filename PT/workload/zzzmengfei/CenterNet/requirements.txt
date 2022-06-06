@@ -1,0 +1,7 @@
+numpy
+pillow==8.2.0
+cython
+matplotlib
+tqdm
+h5py
+opencv-python

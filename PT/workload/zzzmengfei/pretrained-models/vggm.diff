@@ -1,0 +1,427 @@
+diff --git a/examples/imagenet_eval.py b/examples/imagenet_eval.py
+index 8eb0555..d3295e7 100644
+--- a/examples/imagenet_eval.py
++++ b/examples/imagenet_eval.py
+@@ -57,13 +57,47 @@ parser.add_argument('--do-not-preserve-aspect-ratio',
+                     dest='preserve_aspect_ratio',
+                     help='do not preserve the aspect ratio when resizing an image',
+                     action='store_false')
++parser.add_argument('--mkldnn', action='store_true', default=False,
++                    help='use mkldnn weight cache')
++parser.add_argument('--jit', action='store_true', default=False,
++                    help='enable Intel_PyTorch_Extension JIT path')
++parser.add_argument('--llga', action='store_true', default=False,
++                    help='enable LLGA')
++parser.add_argument('--cuda', action='store_true', default=False,
++                    help='disable CUDA')
++parser.add_argument('-i', '--iterations', default=0, type=int, metavar='N',
++                    help='number of total iterations to run')
++parser.add_argument('-w', '--warmup-iterations', default=0, type=int, metavar='N',
++                    help='number of warmup iterations to run')
++parser.add_argument('--precision', type=str, default="float32",
++                    help='precision, float32, int8, bfloat16')
++parser.add_argument("-t", "--profile", action='store_true',
++                    help="Trigger profile on current topology.")
++parser.add_argument("--performance", action='store_true',
++                    help="measure performance only, no accuracy.")
++parser.add_argument("--dummy", action='store_true',
++                    help="using  dummu data to test the performance of inference")
++parser.add_argument('--channels_last', type=int, default=1,
++                    help='use channels last format')
++parser.add_argument('--config_file', type=str, default="./conf.yaml",
++                    help='config file for int8 tuning')
+ parser.set_defaults(preserve_aspect_ratio=True)
+ best_prec1 = 0
+ 
++args = parser.parse_args()
++assert not (args.mkldnn and args.cuda), "mkldnn and cuda can't be set together!"
++
++if args.mkldnn:
++    import intel_pytorch_extension as ipex
++    print("import IPEX **************")
++    if args.precision == "bfloat16":
++        # Automatically mix precision
++        ipex.enable_auto_mixed_precision(mixed_dtype = torch.bfloat16)
+ 
+ def main():
+     global args, best_prec1
+     args = parser.parse_args()
++    print(args)
+ 
+     # create model
+     print("=> creating model '{}'".format(args.arch))
+@@ -72,7 +106,7 @@ def main():
+         model = pretrainedmodels.__dict__[args.arch](num_classes=1000,
+                                                      pretrained=args.pretrained)
+     else:
+-        model = pretrainedmodels.__dict__[args.arch]()
++        model = pretrainedmodels.__dict__[args.arch](pretrained=None)
+ 
+     # optionally resume from a checkpoint
+     if args.resume:
+@@ -87,7 +121,8 @@ def main():
+         else:
+             print("=> no checkpoint found at '{}'".format(args.resume))
+ 
+-    cudnn.benchmark = True
++    if args.cuda:
++        cudnn.benchmark = True
+ 
+     # Data loading code
+     # traindir = os.path.join(args.data, 'train')
+@@ -110,33 +145,53 @@ def main():
+     # else:
+     #     scale = 0.875
+     scale = 0.875
++    opt = pretrainedmodels.pretrained_settings[args.arch]["imagenet"]
+ 
+     print('Images transformed from size {} to {}'.format(
+-        int(round(max(model.input_size) / scale)),
+-        model.input_size))
++        int(round(max(opt["input_size"]) / scale)),
++        opt["input_size"]))
++    # print('Images transformed from size {} to {}'.format(
++    #     int(round(max(model.input_size) / scale)),
++    #     model.input_size))
+ 
+     val_tf = pretrainedmodels.utils.TransformImage(
+-        model,
++        opt,
+         scale=scale,
+         preserve_aspect_ratio=args.preserve_aspect_ratio
+     )
+-
+-    val_loader = torch.utils.data.DataLoader(
+-        datasets.ImageFolder(valdir, val_tf),
+-        batch_size=args.batch_size, shuffle=False,
+-        num_workers=args.workers, pin_memory=True)
++    if not args.dummy:
++        val_loader = torch.utils.data.DataLoader(
++            datasets.ImageFolder(valdir, val_tf),
++            batch_size=args.batch_size, shuffle=False,
++            num_workers=args.workers, pin_memory=True)
++    else:
++        val_loader=""
+ 
+     # define loss function (criterion) and optimizer
+-    criterion = nn.CrossEntropyLoss().cuda()
++    if args.cuda:
++        criterion = nn.CrossEntropyLoss().cuda()
++    else:
++        criterion = nn.CrossEntropyLoss()
+ 
+     optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                 momentum=args.momentum,
+                                 weight_decay=args.weight_decay)
+ 
+-    model = torch.nn.DataParallel(model).cuda()
++    if args.cuda:
++        model = torch.nn.DataParallel(model).cuda()
++    # else:
++        # model = torch.nn.DataParallel(model)
++    if args.mkldnn:
++        model = model.to(ipex.DEVICE)
++    elif args.channels_last:
++        model = model.to(memory_format=torch.channels_last)
+ 
+     if args.evaluate:
+-        validate(val_loader, model, criterion)
++        if args.jit:
++            scripted_model = torch.jit.script(model.eval())
++            validate(val_loader, scripted_model, criterion, args)
++        else:
++            validate(val_loader, model, criterion, args)
+         return
+ 
+     for epoch in range(args.start_epoch, args.epochs):
+@@ -171,14 +226,13 @@ def train(train_loader, model, criterion, optimizer, epoch):
+ 
+     end = time.time()
+     for i, (input, target) in enumerate(train_loader):
+-        # measure data loading time
++        # compute output
+         data_time.update(time.time() - end)
+-
+         target = target.cuda()
+         input_var = torch.autograd.Variable(input)
+         target_var = torch.autograd.Variable(target)
+-
+-        # compute output
++        output = model(input_var)
++        # measure data loading time
+         output = model(input_var)
+         loss = criterion(output, target_var)
+ 
+@@ -208,46 +262,138 @@ def train(train_loader, model, criterion, optimizer, epoch):
+                 data_time=data_time, loss=losses, top1=top1, top5=top5))
+ 
+ 
+-def validate(val_loader, model, criterion):
++def validate(val_loader, model, criterion, args):
+     with torch.no_grad():
++        iterations = args.iterations
++        warmup = args.warmup_iterations
+         batch_time = AverageMeter()
+         losses = AverageMeter()
+         top1 = AverageMeter()
+         top5 = AverageMeter()
+ 
++        if args.precision == 'int8':   
++            from lpot.experimental import Quantization, common
++            quantizer = Quantization(args.config_file)
++            image_size = pretrainedmodels.pretrained_settings[args.arch]["imagenet"]["input_size"]
++            dataset = quantizer.dataset('dummy', (args.batch_size, *image_size), label=True)
++            quantizer.calib_dataloader = common.DataLoader(dataset)
++            quantizer.model = common.Model(model)
++            q_model = quantizer()
++            model = q_model.model
++
+         # switch to evaluate mode
+         model.eval()
+ 
+-        end = time.time()
+-        for i, (input, target) in enumerate(val_loader):
+-            target = target.cuda()
+-            input = input.cuda()
+-
+-            # compute output
+-            output = model(input)
+-            loss = criterion(output, target)
+-
+-            # measure accuracy and record loss
+-            prec1, prec5 = accuracy(output.data, target.data, topk=(1, 5))
+-            losses.update(loss.data.item(), input.size(0))
+-            top1.update(prec1.item(), input.size(0))
+-            top5.update(prec5.item(), input.size(0))
+-
+-            # measure elapsed time
+-            batch_time.update(time.time() - end)
+-            end = time.time()
+-
+-            if i % args.print_freq == 0:
+-                print('Test: [{0}/{1}]\t'
+-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+-                      'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+-                      'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+-                       i, len(val_loader), batch_time=batch_time, loss=losses,
+-                       top1=top1, top5=top5))
+-
+-        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+-              .format(top1=top1, top5=top5))
++        image_size = pretrainedmodels.pretrained_settings[args.arch]["imagenet"]["input_size"]
++        if args.llga:
++            torch._C._jit_set_profiling_mode(False)
++            torch._C._jit_set_profiling_executor(False)
++            torch._C._jit_set_llga_enabled(True)
++            model = torch.jit.trace(model, torch.rand(args.batch_size, *image_size))
++            print("---- Enable LLGA.")
++
++        if args.dummy:
++            # image_size = pretrainedmodels.pretrained_settings[args.arch]["imagenet"]["input_size"]
++            images = torch.randn(args.batch_size, *image_size)
++            target = torch.arange(1, args.batch_size + 1).long()
++            # print("Start convert to onnx!")
++            # torch.onnx.export(model.module, images, args.arch + ".onnx", verbose=False)
++            # print("End convert to onnx!")
++            for i in range(iterations + warmup):
++                if i >= warmup:
++                    end = time.time()
++
++                if args.mkldnn:
++                    images = images.to(ipex.DEVICE)
++                elif args.channels_last:
++                    if args.arch != 'vggm':
++                        images = images.to(memory_format=torch.channels_last)
++                elif args.cuda:
++                    images = images.cuda(args.gpu, non_blocking=True)
++                    target = target.cuda(args.gpu, non_blocking=True)
++
++                # compute output
++                if args.profile:
++                    with torch.profiler.profile(activities = [torch.profiler.ProfilerActivity.CPU]) as prof:
++                        if args.precision == "bfloat16":
++                            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                                output = model(images)
++                        else:
++                            output = model(images)
++                else:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            output = model(images)
++                    else:
++                        output = model(images)
++
++                # measure elapsed time
++                if i >= warmup:
++                    batch_time.update(time.time() - end)
++
++                if i % args.print_freq == 0:
++                    print('Test: [{0}/{1}]'.format(i, iterations + warmup))
++
++            if args.profile:
++                import pathlib
++                timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++                if not os.path.exists(timeline_dir):
++                    os.makedirs(timeline_dir)
++                timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                            args.arch + str(i + 1) + '-' + str(os.getpid()) + '.json'
++                prof.export_chrome_trace(timeline_file)
++                # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++                # save_profile_result(torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++        else:
++            for i, (input, target) in enumerate(val_loader):
++                if not args.evaluate or iterations == 0 or i < iterations + warmup:
++                    if i >= warmup:
++                        end = time.time()
++                    if args.mkldnn:
++                        input = input.to(ipex.DEVICE)
++                    elif args.channels_last:
++                        images = images.to(memory_format=torch.channels_last)
++                    elif args.cuda:
++                        target = target.cuda()
++                        input = input.cuda()
++
++                    # compute output
++                    output = model(input)
++                    loss = criterion(output, target)
++
++                    # measure accuracy and record loss
++                    prec1, prec5 = accuracy(output.data, target.data, topk=(1, 5))
++                    losses.update(loss.data.item(), input.size(0))
++                    top1.update(prec1.item(), input.size(0))
++                    top5.update(prec5.item(), input.size(0))
++
++                    # measure elapsed time
++                    if i >= warmup:
++                        batch_time.update(time.time() - end)
++                    end = time.time()
++
++                    if i % args.print_freq == 0:
++                        print('Test: [{0}/{1}]\t'
++                              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
++                              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
++                              'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
++                              'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
++                               i, len(val_loader), batch_time=batch_time, loss=losses,
++                               top1=top1, top5=top5))
++                else:
++                    break
++
++            print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
++                  .format(top1=top1, top5=top5))
++
++        # TODO: this should also be done with the ProgressMeter
++        if args.evaluate:
++            batch_size = args.batch_size
++            latency = batch_time.avg / batch_size * 1000
++            perf = batch_size/batch_time.avg
++            print('inference latency: %3.3f ms'%latency)
++            print('inference Throughput: %3.3f fps'%perf)
+ 
+         return top1.avg, top5.avg
+ 
+@@ -299,6 +445,25 @@ def accuracy(output, target, topk=(1,)):
+         res.append(correct_k.mul_(100.0 / batch_size))
+     return res
+ 
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
+ 
+ if __name__ == '__main__':
+-    main()
+\ No newline at end of file
++    main()
+diff --git a/pretrainedmodels/__init__.py b/pretrainedmodels/__init__.py
+index 0187e4b..fdab0ba 100644
+--- a/pretrainedmodels/__init__.py
++++ b/pretrainedmodels/__init__.py
+@@ -53,3 +53,4 @@ from .models.senet import se_resnext50_32x4d
+ from .models.senet import se_resnext101_32x4d
+ from .models.pnasnet import pnasnet5large
+ from .models.polynet import polynet
++from .models.vggm import vggm
+diff --git a/pretrainedmodels/models/__init__.py b/pretrainedmodels/models/__init__.py
+index 83c2392..2bafada 100644
+--- a/pretrainedmodels/models/__init__.py
++++ b/pretrainedmodels/models/__init__.py
+@@ -56,3 +56,5 @@ from .senet import se_resnext101_32x4d
+ 
+ from .pnasnet import pnasnet5large
+ from .polynet import polynet
++
++from .vggm import vggm
+diff --git a/pretrainedmodels/models/utils.py b/pretrainedmodels/models/utils.py
+index 4ef50b1..bc2799b 100644
+--- a/pretrainedmodels/models/utils.py
++++ b/pretrainedmodels/models/utils.py
+@@ -13,6 +13,7 @@ from .senet import pretrained_settings as senet_settings
+ from .cafferesnet import pretrained_settings as cafferesnet_settings
+ from .pnasnet import pretrained_settings as pnasnet_settings
+ from .polynet import pretrained_settings as polynet_settings
++from .vggm import pretrained_settings as vggm_settings
+ 
+ all_settings = [
+     fbresnet_settings,
+@@ -28,7 +29,8 @@ all_settings = [
+     senet_settings,
+     cafferesnet_settings,
+     pnasnet_settings,
+-    polynet_settings
++    polynet_settings,
++    vggm_settings
+ ]
+ 
+ model_names = []
+diff --git a/pretrainedmodels/models/vggm.py b/pretrainedmodels/models/vggm.py
+index dc6a7b0..27f1668 100644
+--- a/pretrainedmodels/models/vggm.py
++++ b/pretrainedmodels/models/vggm.py
+@@ -98,7 +98,7 @@ class VGGM(nn.Module):
+ 
+     def forward(self, x):
+         x = self.features(x)
+-        x = x.view(x.size(0), -1)
++        x = x.reshape(x.size(0), -1)
+         x = self.classif(x)
+         return x
+ 
+@@ -118,4 +118,5 @@ def vggm(num_classes=1000, pretrained='imagenet'):
+         model.std = settings['std']
+     else:
+         model = VGGM(num_classes=num_classes)
+-    return model
+\ No newline at end of file
++    return model
++
+diff --git a/setup.py b/setup.py
+index a3678f4..0b6e0c3 100644
+--- a/setup.py
++++ b/setup.py
+@@ -120,7 +120,7 @@ setup(
+     #
+     # For an analysis of "install_requires" vs pip's requirements files see:
+     # https://packaging.python.org/en/latest/requirements.html
+-    install_requires=['torch', 'torchvision', 'munch', 'tqdm'],  # Optional
++    install_requires=['munch', 'tqdm'],  # Optional
+ 
+     # List additional groups of dependencies here (e.g. development
+     # dependencies). Users will be able to install these using the "extras"

@@ -1,0 +1,810 @@
+{
+ "HugeCTR": {
+  "model_path": "/mlp/HugeCTR/HugeCTR.pb",
+  "batch_size": 1
+ },
+ "i3d-flow": {
+  "model_path": "/ov/all_tf_models/action_recognition/i3d/flow/tf/i3d-flow.pb",
+  "batch_size": 1
+ },
+ "i3d-rgb": {
+  "model_path": "/ov/all_tf_models/action_recognition/i3d/rgb/tf/i3d-rgb.pb",
+  "batch_size": 1
+ },
+ "densenet-121": {
+  "model_path": "/ov/all_tf_models/classification/densenet/121/tf/densenet-121.pb",
+  "batch_size": 1
+ },
+ "densenet-161": {
+  "model_path": "/ov/all_tf_models/classification/densenet/161/tf/densenet-161.pb",
+  "batch_size": 1
+ },
+ "densenet-169": {
+  "model_path": "/ov/all_tf_models/classification/densenet/169/tf/densenet-169.pb",
+  "batch_size": 1
+ },
+ "googlenet-v1": {
+  "model_path": "/ov/all_tf_models/classification/googlenet/v1/tf/googlenet-v1.pb",
+  "batch_size": 1
+ },
+ "googlenet-v2": {
+  "model_path": "/ov/all_tf_models/classification/googlenet/v2/tf/googlenet-v2.pb",
+  "batch_size": 1
+ },
+ "googlenet-v3": {
+  "model_path": "/ov/all_tf_models/classification/googlenet/v3/tf/googlenet-v3.pb",
+  "batch_size": 1
+ },
+ "googlenet-v4": {
+  "model_path": "/ov/all_tf_models/classification/googlenet/v4/tf/googlenet-v4.pb",
+  "batch_size": 1
+ },
+ "image-retrieval-0001": {
+  "model_path": "/ov/all_tf_models/classification/image-retrieval-0001/image-retrieval-0001.pb",
+  "batch_size": 1
+ },
+ "inception-resnet-v2": {
+  "model_path": "/ov/all_tf_models/classification/inception-resnet/v2/tf/inception-resnet-v2.pb",
+  "batch_size": 1
+ },
+ "nasnet-a-large-331": {
+  "model_path": "/ov/all_tf_models/classification/nasnet/large/tf/nasnet-a-large-331.pb",
+  "batch_size": 1
+ },
+ "nasnet-a-mobile-224": {
+  "model_path": "/ov/all_tf_models/classification/nasnet/mobile/tf/nasnet-a-mobile-224.pb",
+  "batch_size": 1
+ },
+ "resnet-101": {
+  "model_path": "/ov/all_tf_models/classification/resnet/v1/101/tf/resnet-101.pb",
+  "batch_size": 1
+ },
+ "resnet-152": {
+  "model_path": "/ov/all_tf_models/classification/resnet/v1/152/tf/resnet-152.pb",
+  "batch_size": 1
+ },
+ "resnet-50": {
+  "model_path": "/ov/all_tf_models/classification/resnet/v1/50/tf/official/resnet-50.pb",
+  "batch_size": 1
+ },
+ "resnet-v2-101": {
+  "model_path": "/ov/all_tf_models/classification/resnet/v2/101/tf/resnet-v2-101.pb",
+  "batch_size": 1
+ },
+ "resnet-v2-152": {
+  "model_path": "/ov/all_tf_models/classification/resnet/v2/152/tf/resnet-v2-152.pb",
+  "batch_size": 1
+ },
+ "resnet-v2-50": {
+  "model_path": "/ov/all_tf_models/classification/resnet/v2/50/tf/224x224/resnet-v2-50.pb",
+  "batch_size": 1
+ },
+ "squeezenet1_1": {
+  "model_path": "/ov/all_tf_models/classification/squeezenet/1.1/tf/squeezenet1_1.pb",
+  "batch_size": 1
+ },
+ "vgg16": {
+  "model_path": "/ov/all_tf_models/classification/vgg/16/tf/vgg16.pb",
+  "batch_size": 1
+ },
+ "vgg19": {
+  "model_path": "/ov/all_tf_models/classification/vgg/19/tf/vgg19.pb",
+  "batch_size": 1
+ },
+ "3d-pose-baseline": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/3d-pose-baseline/tf/3d-pose-baseline.pb",
+  "batch_size": 1
+ },
+ "cpm-person": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/cpm/person/tf/cpm-person.pb",
+  "batch_size": 1
+ },
+ "openpose-pose": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/openpose/pose/tf/openpose-pose.pb",
+  "batch_size": 1
+ },
+ "mask_rcnn_inception_v2_coco": {
+  "model_path": "/ov/all_tf_models/instance_segmentation/mask_rcnn/mask_rcnn_inception_v2_coco/tf/mask_rcnn_inception_v2_coco.pb",
+  "batch_size": 1
+ },
+ "intel-labs-nonlocal-dehazing": {
+  "model_path": "/ov/all_tf_models/IntelLabs/FastImageProcessing/NonlocalDehazing/intel-labs-nonlocal-dehazing.pb",
+  "batch_size": 1
+ },
+ "learning-to-see-in-the-dark-fuji": {
+  "model_path": "/ov/all_tf_models/IntelLabs/LearningToSeeInTheDark/Fuji/learning-to-see-in-the-dark-fuji.pb",
+  "batch_size": 1
+ },
+ "learning-to-see-in-the-dark-sony": {
+  "model_path": "/ov/all_tf_models/IntelLabs/LearningToSeeInTheDark/Sony/learning-to-see-in-the-dark-sony.pb",
+  "batch_size": 1
+ },
+ "bert-base-uncased_L-12_H-768_A-12": {
+  "model_path": "/ov/all_tf_models/language_representation/bert/base/uncased_L-12_H-768_A-12/tf/bert-base-uncased_L-12_H-768_A-12.pb",
+  "batch_size": 1
+ },
+ "vehicle-attributes-barrier-0103": {
+  "model_path": "/ov/all_tf_models/object_attributes/vehicle_attributes/tf/vehicle-attributes-barrier-0103.pb",
+  "batch_size": 1
+ },
+ "vehicle-license-plate-detection-barrier-0123": {
+  "model_path": "/ov/all_tf_models/object_detection/barrier/tf/0123/vehicle-license-plate-detection-barrier-0123.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_inception_v2_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/faster_rcnn/faster_rcnn_inception_v2_coco/tf/faster_rcnn_inception_v2_coco.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet101_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/faster_rcnn/faster_rcnn_resnet101_coco/tf/faster_rcnn_resnet101_coco.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet50_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/faster_rcnn/faster_rcnn_resnet50_coco/tf/faster_rcnn_resnet50_coco.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet50_lowproposals_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/faster_rcnn/faster_rcnn_resnet50_lowproposals_coco/tf/faster_rcnn_resnet50_lowproposals_coco.pb",
+  "batch_size": 1
+ },
+ "retinanet": {
+  "model_path": "/ov/all_tf_models/object_detection/common/retinanet/tf/retinanet.pb",
+  "batch_size": 1
+ },
+ "rfcn-resnet101-coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/rfcn/rfcn_resnet101_coco/tf/rfcn-resnet101-coco.pb",
+  "batch_size": 1
+ },
+ "inceptionv2_ssd": {
+  "model_path": "/ov/all_tf_models/object_detection/common/ssd_inceptionv2/tf/inceptionv2_ssd.pb",
+  "batch_size": 1
+ },
+ "ssd_resnet50_v1_fpn_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/ssd_resnet50/ssd_resnet50_v1_fpn_coco/tf/ssd_resnet50_v1_fpn_coco.pb",
+  "batch_size": 1
+ },
+ "yolo-v2": {
+  "model_path": "/ov/all_tf_models/object_detection/yolo/yolo_v2/tf/yolo-v2.pb",
+  "batch_size": 1
+ },
+ "yolo-v3": {
+  "model_path": "/ov/all_tf_models/object_detection/yolo/yolo_v3/tf/yolo-v3.pb",
+  "batch_size": 1
+ },
+ "yolo-v2-tiny-ava-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/detection/tinyYOLOv2/fp32_sparsity00/yolo-v2-tiny-ava-0001.pb",
+  "batch_size": 1
+ },
+ "yolo-v2-tiny-ava-sparse-30-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/detection/tinyYOLOv2/fp32_sparsity30/yolo-v2-tiny-ava-sparse-30-0001.pb",
+  "batch_size": 1
+ },
+ "yolo-v2-tiny-ava-sparse-60-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/detection/tinyYOLOv2/fp32_sparsity60/yolo-v2-tiny-ava-sparse-60-0001.pb",
+  "batch_size": 1
+ },
+ "yolo-v2-ava-sparse-35-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/detection/YOLOv2/fp32_sparsity35/yolo-v2-ava-sparse-35-0001.pb",
+  "batch_size": 1
+ },
+ "yolo-v2-ava-sparse-70-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/detection/YOLOv2/fp32_sparsity70/yolo-v2-ava-sparse-70-0001.pb",
+  "batch_size": 1
+ },
+ "icnet-camvid-ava-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/semantic_segmentation/icnet-camvid-tf-ws00/icnet-camvid-ava-0001.pb",
+  "batch_size": 1
+ },
+ "icnet-camvid-ava-sparse-30-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/semantic_segmentation/icnet-camvid-tf-ws30/icnet-camvid-ava-sparse-30-0001.pb",
+  "batch_size": 1
+ },
+ "icnet-camvid-ava-sparse-60-0001": {
+  "model_path": "/ov/all_tf_models/PublicCompressed/semantic_segmentation/icnet-camvid-tf-ws60/icnet-camvid-ava-sparse-60-0001.pb",
+  "batch_size": 1
+ },
+ "darknet19": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/classification/darknet19/darknet19.pb",
+  "batch_size": 1
+ },
+ "darknet53": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/classification/darknet53/darknet53.pb",
+  "batch_size": 1
+ },
+ "DSSD_12": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/object_detection/common/dssd/DSSD_12/tf/DSSD_12.pb",
+  "batch_size": 1
+ },
+ "tiny_yolo_v1": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/object_detection/common/yolo/v1_tiny/tf/tiny_yolo_v1.pb",
+  "batch_size": 1
+ },
+ "tiny_yolo_v2": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/object_detection/common/yolo/v2_tiny/tf/tiny_yolo_v2.pb",
+  "batch_size": 1
+ },
+ "TCN": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/sequence_modelling/tcn/tf/TCN.pb",
+  "batch_size": 1
+ },
+ "rmnet_ssd": {
+  "model_path": "/ov/all_tf_models/Retail/action_detection/pedestrian/rmnet_ssd/0028_tf/tf/rmnet_ssd.pb",
+  "batch_size": 1
+ },
+ "icv-emotions-recognition-0002": {
+  "model_path": "/ov/all_tf_models/Retail/object_attributes/emotions_recognition/0002/tf/icv-emotions-recognition-0002.pb",
+  "batch_size": 1
+ },
+ "ava-face-recognition-3.0.0": {
+  "model_path": "/ov/all_tf_models/Security/feature_extraction/ava/tf/ava-face-recognition-3.0.0.pb",
+  "batch_size": 1
+ },
+ "yolo-v2-tiny-vehicle-detection-0001": {
+  "model_path": "/ov/all_tf_models/Security/object_detection/barrier/yolo/yolo-v2-tiny-vehicle-detection-0001/tf/yolo-v2-tiny-vehicle-detection-0001.pb",
+  "batch_size": 1
+ },
+ "ava-person-vehicle-detection-stage2-2.0.0": {
+  "model_path": "/ov/all_tf_models/Security/object_detection/common/ava/stage2/tf/ava-person-vehicle-detection-stage2-2.0.0.pb",
+  "batch_size": 1
+ },
+ "person-vehicle-bike-detection-crossroad-yolov3-1020": {
+  "model_path": "/ov/all_tf_models/Security/object_detection/crossroad/1020/tf/person-vehicle-bike-detection-crossroad-yolov3-1020.pb",
+  "batch_size": 1
+ },
+ "deeplabv3": {
+  "model_path": "/ov/all_tf_models/semantic_segmentation/deeplab/v3/deeplabv3.pb",
+  "batch_size": 1
+ },
+ "ctpn": {
+  "model_path": "/ov/all_tf_models/text_detection/ctpn/tf/ctpn.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet101_fgvc": {
+  "model_path": "/ckpt/faster_rcnn_resnet101_fgvc_2018_07_19/faster_rcnn_resnet101_fgvc_2018_07_19/faster_rcnn_resnet101_fgvc.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet101_kitti": {
+  "model_path": "/ckpt/faster_rcnn_resnet101_kitti_2018_01_28/faster_rcnn_resnet101_kitti_2018_01_28/faster_rcnn_resnet101_kitti.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet101_lowproposals_coco": {
+  "model_path": "/ckpt/faster_rcnn_resnet101_lowproposals_coco_2018_01_28/faster_rcnn_resnet101_lowproposals_coco_2018_01_28/faster_rcnn_resnet101_lowproposals_coco.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet50_fgvc": {
+  "model_path": "/ckpt/faster_rcnn_resnet50_fgvc_2018_07_19/faster_rcnn_resnet50_fgvc_2018_07_19/faster_rcnn_resnet50_fgvc.pb",
+  "batch_size": 1
+ },
+ "ssd_inception_v2_coco": {
+  "model_path": "/ckpt/ssd_inception_v2_coco_2018_01_28/ssd_inception_v2_coco_2018_01_28/ssd_inception_v2_coco.pb",
+  "batch_size": 1
+ },
+ "ssd-resnet34": {
+  "model_path": "/ckpt/ssd-resnet34_300x300/ssd_resnet34_300x300.pb",
+  "batch_size": 1
+ },
+ "DeepLab": {
+  "model_path": "/mlp/deeplabv3_mnv2_cityscapes_train/deeplab.pb",
+  "batch_size": 1
+ },
+ "SSD_ResNet50_V1_FPN_640x640(RetinaNet50)": {
+  "model_path": "/ckpt/ssd_resnet50_v1_fpn_shared_box_predictor_640x640_coco14_sync_2018_07_03/ssd_resnet50_v1_fpn_shared_box_predictor_640x640_coco14_sync_2018_07_03/SSD_ResNet50_V1_FPN_640x640_RetinaNet50.pb",
+  "batch_size": 1
+ },
+ "DRAW": {
+  "model_path": "/dpg/DRAW/DRAW.pb",
+  "batch_size": 1
+ },
+ "Vnet": {
+  "model_path": "/mlp/vnet/vnet.pb",
+  "batch_size": 1
+ },
+ "GraphSage": {
+  "model_path": "/mlp/GraphSage/GraphSage.pb",
+  "batch_size": 1
+ },
+ "WGAN": {
+  "model_path": "/mlp/oob_gan_models/WGAN.pb",
+  "batch_size": 1
+ },
+ "CBAM": {
+  "model_path": "/mlp/CBAM/CBAM.pb",
+  "batch_size": 1
+ },
+ "ALBERT": {
+  "model_path": "/dpg/ALBERT/ALBERT.pb",
+  "batch_size": 1
+ },
+ "BERT-BASE": {
+  "model_path": "/mlp/BERT_BASE/BERT_BASE.pb",
+  "batch_size": 1
+ },
+ "BERT-LARGE": {
+  "model_path": "/mlp/BERT_LARGE/BERT_LARGE.pb",
+  "batch_size": 1
+ },
+ "CharCNN": {
+  "model_path": "/dpg/CharCNN/CharCNN.pb",
+  "batch_size": 1
+ },
+ "dilation": {
+  "model_path": "/ov/Dilation/dilation.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_inception_resnet_v2_atrous_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/faster_rcnn/faster_rcnn_inception_resnet_v2_atrous_coco/tf/faster_rcnn_inception_resnet_v2_atrous_coco.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_inception_resnet_v2_atrous_lowproposals_coco": {
+  "model_path": "/ckpt/faster_rcnn_inception_resnet_v2_atrous_lowproposals_coco_2018_01_28/faster_rcnn_inception_resnet_v2_atrous_lowproposals_coco.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_nas_coco": {
+  "model_path": "/ckpt/faster_rcnn_nas_coco_2018_01_28/faster_rcnn_nas_coco_2018_01_28.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_nas_lowproposals_coco": {
+  "model_path": "/ov/all_tf_models/object_detection/common/faster_rcnn/faster_rcnn_nas_lowproposals_coco/tf/faster_rcnn_nas_lowproposals_coco.pb",
+  "batch_size": 1
+ },
+ "GAN": {
+  "model_path": "/mlp/oob_gan_models/GAN.pb",
+  "batch_size": 1
+ },
+ "gmcnn-places2": {
+  "model_path": "/ov/all_tf_models/image_inpainting/gmcnn/tf/gmcnn-places2.pb",
+  "batch_size": 1
+ },
+ "LSGAN": {
+  "model_path": "/mlp/oob_gan_models/LSGAN.pb",
+  "batch_size": 1
+ },
+ "mask_rcnn_inception_resnet_v2_atrous_coco": {
+  "model_path": "/ov/all_tf_models/instance_segmentation/mask_rcnn/mask_rcnn_inception_resnet_v2_atrous_coco/tf/mask_rcnn_inception_resnet_v2_atrous_coco.pb",
+  "batch_size": 1
+ },
+ "NCF-1B": {
+  "model_path": "/dpg/ncf_trained_movielens_1m/NCF-1B.pb",
+  "batch_size": 1
+ },
+ "R-FCN": {
+  "model_path": "/dpg/R-FCN/rfcn_resnet101_coco_2018_01_28/R-FCN.pb",
+  "batch_size": 1
+ },
+ "Transformer-LT": {
+  "model_path": "/mlp/transformer_lt_official_fp32_pretrained_model/graph/Transformer-LT.pb",
+  "batch_size": 1
+ },
+ "DynamicMemory": {
+  "model_path": "/oob/checkpoint_dynamic_memory_network/DynamicMemory.pb",
+  "batch_size": 1
+ },
+ "EntityNet": {
+  "model_path": "/oob/checkpoint_entity_network2/EntityNet.pb",
+  "batch_size": 1
+ },
+ "Seq2seqAttn": {
+  "model_path": "/oob/Seq2seqAttn/Seq2seqAttn.pb",
+  "batch_size": 1
+ },
+ "SqueezeNet": {
+  "model_path": "/mlp/SqueezeNet-tf/SqueezeNet.pb",
+  "batch_size": 1
+ },
+ "ssd_resnet34_1200x1200": {
+  "model_path": "/mlp/ssd_resnet34_model/ssd_resnet34_1200x1200.pb",
+  "batch_size": 1
+ },
+ "TextRCNN": {
+  "model_path": "/oob/TextRCNN/TextRCNN.pb",
+  "batch_size": 1
+ },
+ "U-Net": {
+  "model_path": "/mlp/unet/U-Net.pb",
+  "batch_size": 1
+ },
+ "wavenet": {
+  "model_path": "/dpg/wavenet/wavenet.pb",
+  "batch_size": 1
+ },
+ "SphereFace": {
+  "model_path": "/dpg/SphereFace/SphereFace.pb",
+  "batch_size": 1
+ },
+ "HierAtteNet": {
+  "model_path": "/oob/checkpoint_hier_atten_title/text_hier_atten_title_desc_checkpoint_MHA/HierAtteNet.pb",
+  "batch_size": 1
+ },
+ "ResNet-50_v1.5": {
+  "model_path": "/mlp/ResNet50_v1_5/model_dir/ResNet-50_v1.5.pb",
+  "batch_size": 1
+ },
+ "ResNeXt-50": {
+  "model_path": "/dpg/ResNext_50/ResNext_50.pb",
+  "batch_size": 1
+ },
+ "ResNeXt-101": {
+  "model_path": "/dpg/ResNext_101/ResNext_101.pb",
+  "batch_size": 1
+ },
+ "COVID-Net": {
+  "model_path": "/oob/COVID-Net/COVID-Net.pb",
+  "batch_size": 1
+ },
+ "ACGAN": {
+  "model_path": "/oob/oob_gan_models/ACGAN.pb",
+  "batch_size": 1
+ },
+ "BEGAN": {
+  "model_path": "/oob/oob_gan_models/BEGAN.pb",
+  "batch_size": 1
+ },
+ "CGAN": {
+  "model_path": "/oob/oob_gan_models/CGAN.pb",
+  "batch_size": 1
+ },
+ "DRAGAN": {
+  "model_path": "/oob/oob_gan_models/DRAGAN.pb",
+  "batch_size": 1
+ },
+ "EBGAN": {
+  "model_path": "/oob/oob_gan_models/EBGAN.pb",
+  "batch_size": 1
+ },
+ "infoGAN": {
+  "model_path": "/oob/oob_gan_models/infoGAN.pb",
+  "batch_size": 1
+ },
+ "mask_rcnn_resnet101_atrous_coco": {
+  "model_path": "/ov/all_tf_models/instance_segmentation/mask_rcnn/mask_rcnn_resnet101_atrous_coco/tf/mask_rcnn_resnet101_atrous_coco.pb",
+  "batch_size": 1
+ },
+ "mask_rcnn_resnet50_atrous_coco": {
+  "model_path": "/ov/all_tf_models/instance_segmentation/mask_rcnn/mask_rcnn_resnet50_atrous_coco/tf/mask_rcnn_resnet50_atrous_coco.pb",
+  "batch_size": 1
+ },
+ "person-vehicle-bike-detection-crossroad-yolov3-1024": {
+  "model_path": "/ov/all_tf_models/Security/object_detection/crossroad/1024/tf/person-vehicle-bike-detection-crossroad-yolov3-1024.pb",
+  "batch_size": 1
+ },
+ "srgan": {
+  "model_path": "/ov/all_tf_models/image_processing/srgan/tf/srgan.pb",
+  "batch_size": 1
+ },
+ "SSD-ResNet34_1200 x 1200": {
+  "model_path": "/dpg/SSD-ResNet34_1200x1200/ssd_resnet34_fp32_1200x1200_pretrained_model.pb",
+  "batch_size": 1
+ },
+ "unet-3d-isensee_2017": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/volumetric_segmentation/unet/3d/isensee_2017/tf/unet-3d-isensee_2017.pb",
+  "batch_size": 1
+ },
+ "unet-3d-origin": {
+  "model_path": "/ov/all_tf_models/PublicInHouse/volumetric_segmentation/unet/3d/origin/tf/unet-3d-origin.pb",
+  "batch_size": 1
+ },
+ "WGAN_GP": {
+  "model_path": "/oob/oob_gan_models/WGAN_GP.pb",
+  "batch_size": 1
+ },
+ "wide_deep": {
+  "model_path": "/dpg/wide_deep/wide_deep.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D0-512x512": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d0/EfficientDet-D0-512x512.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D1-640x640": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d1/EfficientDet-D1-640x640.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D2-768x768": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d2/EfficientDet-D2-768x768.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D3-896x896": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d3/EfficientDet-D3-896x896.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D4-1024x1024": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d4/EfficientDet-D4-1024x1024.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D5-1280x1280": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d5/EfficientDet-D5-1280x1280.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D6-1280x1280": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d6/EfficientDet-D6-1280x1280.pb",
+  "batch_size": 1
+ },
+ "EfficientDet-D7-1536x1536": {
+  "model_path": "/dpg/EfficientDet/efficientdet-d7/EfficientDet-D7-1536x1536.pb",
+  "batch_size": 1
+ },
+ "vehicle-license-plate-detection-barrier-0106": {
+  "model_path": "/ov/vehicle-license-plate-detection-barrier-0106/vehicle-license-plate-detection-barrier-0106.pb",
+  "batch_size": 1
+ },
+ "ssd_resnet_101_fpn_oidv4": {
+  "model_path": "/ckpt/ssd_resnet101_v1_fpn/ssd_resnet_101_fpn_oidv4.pb",
+  "batch_size": 1
+ },
+ "key-value-memory-networks": {
+  "model_path": "/dpg/key-value-memory-networks/key-value-memory-networks.pb",
+  "batch_size": 1
+ },
+ "NTM-One-Shot": {
+  "model_path": "/dpg/NTM-One-Shot/model/NTM-One-Shot.pb",
+  "batch_size": 1
+ },
+ "NetVLAD": {
+  "model_path": "/dpg/NetVLAD/NetVLAD.pb",
+  "batch_size": 1
+ },
+ "KeypointNet": {
+  "model_path": "/mlp/keypoint/KeypointNet.pb",
+  "batch_size": 1
+ },
+ "Evolution_ensemble": {
+  "model_path": "/dpg/simple_net/Evolution_ensemble.pb",
+  "batch_size": 1
+ },
+ "efficientnet-b0": {
+  "model_path": "/ov/all_tf_models/classification/efficientnet/b0/tf/efficientnet-b0.pb",
+  "batch_size": 1
+ },
+ "efficientnet-b0_auto_aug": {
+  "model_path": "/ov/all_tf_models/classification/efficientnet/b0_auto_aug/tf/efficientnet-b0_auto_aug.pb",
+  "batch_size": 1
+ },
+ "efficientnet-b5": {
+  "model_path": "/ov/all_tf_models/classification/efficientnet/b5/tf/efficientnet-b5.pb",
+  "batch_size": 1
+ },
+ "efficientnet-b7_auto_aug": {
+  "model_path": "/ov/all_tf_models/classification/efficientnet/b7_auto_aug/tf/efficientnet-b7_auto_aug.pb",
+  "batch_size": 1
+ },
+ "vggvox": {
+  "model_path": "/ov/all_tf_models/voice_recognition/vggvox/vggvox.pb",
+  "batch_size": 1
+ },
+ "aipg-vdcnn": {
+  "model_path": "/ov/all_tf_models/AIPG_trained/text_classification/vdcnn/agnews/tf/aipg-vdcnn.pb",
+  "batch_size": 1
+ },
+ "arttrack-coco-multi": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/arttrack/coco/tf/arttrack-coco-multi.pb",
+  "batch_size": 1
+ },
+ "arttrack-mpii-single": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/arttrack/mpii/tf/arttrack-mpii-single.pb",
+  "batch_size": 1
+ },
+ "deepvariant_wgs": {
+  "model_path": "/ov/all_tf_models/dna_sequencing/deepvariant/wgs/deepvariant_wgs.pb",
+  "batch_size": 1
+ },
+ "east_resnet_v1_50": {
+  "model_path": "/ov/all_tf_models/text_detection/east/tf/east_resnet_v1_50.pb",
+  "batch_size": 1
+ },
+ "facenet-20180408-102900": {
+  "model_path": "/ov/all_tf_models/face_recognition/facenet/CASIA-WebFace/tf/facenet-20180408-102900.pb",
+  "batch_size": 1
+ },
+ "handwritten-score-recognition-0003": {
+  "model_path": "/ov/all_tf_models/Retail/handwritten-score-recognition/0003/tf/handwritten-score-recognition-0003.pb",
+  "batch_size": 1
+ },
+ "license-plate-recognition-barrier-0007": {
+  "model_path": "/ov/all_tf_models/optical_character_recognition/license_plate_recognition/tf/license-plate-recognition-barrier-0007.pb",
+  "batch_size": 1
+ },
+ "optical_character_recognition-text_recognition-tf": {
+  "model_path": "/ov/all_tf_models/optical_character_recognition/text_recognition/tf/optical_character_recognition-text_recognition-tf.pb",
+  "batch_size": 1
+ },
+ "PRNet": {
+  "model_path": "/ov/all_tf_models/face_reconstruction/PRNet/tf/PRNet.pb",
+  "batch_size": 1
+ },
+ "text-recognition-0012": {
+  "model_path": "/ov/all_tf_models/Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/tf/text-recognition-0012.pb",
+  "batch_size": 1
+ },
+ "Hierarchical_LSTM": {
+  "model_path": "/dpg/Hierarchical/Hierarchical_LSTM.pb",
+  "batch_size": 1
+ },
+ "yolo-v3-tiny": {
+  "model_path": "/ov/all_tf_models/object_detection/yolo/yolo_v3/yolo-v3-tiny/yolo-v3-tiny-tf/yolo-v3-tiny.pb",
+  "batch_size": 1
+ },
+ "resnet_v2_200": {
+  "model_path": "/dpg/Resnet_v2_200/resnet_v2_200.pb",
+  "batch_size": 1
+ },
+ "CRNN": {
+  "model_path": "/mlp/CRNN/crnn.pb",
+  "batch_size": 1
+ },
+ "CenterNet": {
+  "model_path": "/mlp/CenterNet/CenterNet.pb",
+  "batch_size": 1
+ },
+ "CapsuleNet": {
+  "model_path": "/dpg/CapsuleNet/CapsuleNet.pb",
+  "batch_size": 1
+ },
+ "deepspeech": {
+  "model_path": "/ov/all_tf_models/speech_to_text/deepspeech/v1/tf/deepspeech.pb",
+  "batch_size": 1
+ },
+ "DIEN(Deep Interest Evolution Network )": {
+  "model_path": "/oob/DIEN/DIEN.pb",
+  "batch_size": 1
+ },
+ "dense_vnet_abdominal_ct": {
+  "model_path": "/ov/all_tf_models/semantic_segmentation/dense_vnet/tf/dense_vnet_abdominal_ct.pb",
+  "batch_size": 1
+ },
+ "TextCNN": {
+  "model_path": "/oob/TextCNN/TextCNN.pb",
+  "batch_size": 1
+ },
+ "TextRNN": {
+  "model_path": "/oob/TextRNN/TextRNN.pb",
+  "batch_size": 1
+ },
+ "Show_and_Tell": {
+  "model_path": "/oob/show_and_tell/show_and_tell.pb",
+  "batch_size": 1
+ },
+ "MiniGo": {
+  "model_path": "/dpg/MiniGo/MiniGo.pb",
+  "batch_size": 1
+ },
+ "NeuMF": {
+  "model_path": "/mlp/NeuMF/NeuMF.pb",
+  "batch_size": 1
+ },
+ "context_rcnn_resnet101_snapshot_serenget": {
+  "model_path": "/ckpt/context_rcnn_resnet101_snapshot_serengeti_2020_06_10/context_rcnn_resnet101_snapshot_serenget.pb",
+  "batch_size": 1
+ },
+ "MANN": {
+  "model_path": "/dpg/MANN/MANN.pb",
+  "batch_size": 1
+ },
+ "pose-ae-multiperson": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/pose-ae/multiperson/tf/pose-ae-multiperson.pb",
+  "batch_size": 1
+ },
+ "pose-ae-refinement": {
+  "model_path": "/ov/all_tf_models/human_pose_estimation/pose-ae/refinement/tf/pose-ae-refinement.pb",
+  "batch_size": 1
+ },
+ "faster_rcnn_resnet101_ava_v2.1": {
+  "model_path": "/ckpt/faster_rcnn_resnet101_ava_v2/faster_rcnn_resnet101_ava_v2.1_2018_04_30/saved_model/saved_model.pb",
+  "batch_size": 1
+ },
+ "DLRM": {
+  "model_path": "workload/DLRM-tf",
+  "batch_size": 1
+ },
+ "Deep_Speech_2": {
+  "model_path": "workload/Deep_Speech2_new",
+  "batch_size": 1
+ },
+ "VAE-CF": {
+  "model_path": "workload/VAE-CF",
+  "batch_size": 1
+ },
+ "adversarial_text": {
+  "model_path": "workload/adversarial_text",
+  "batch_size": 1
+ },
+ "GPT2": {
+  "model_path": "workload/GPT-2",
+  "batch_size": 1
+ },
+ "AttRec": {
+  "model_path": "workload/AttRec",
+  "batch_size": 1
+ },
+ "Attention_OCR": {
+  "model_path": "workload/attention-ocr",
+  "batch_size": 1
+ },
+ "Parallel_WaveNet": {
+  "model_path": "workload/parallel_wavenet",
+  "batch_size": 1
+ },
+ "PNASNet-5": {
+  "model_path": "workload/PnasNet-tf",
+  "batch_size": 1
+ },
+ "ResNest50": {
+  "model_path": "workload/ResNest",
+  "batch_size": 1
+ },
+ "ResNest101": {
+  "model_path": "workload/ResNest",
+  "batch_size": 1
+ },
+ "ResNest50-3D": {
+  "model_path": "workload/ResNest",
+  "batch_size": 1
+ },
+ "DETR": {
+  "model_path": "workload/DETR",
+  "batch_size": 1
+ },
+ "DCGAN": {
+  "model_path": "workload/DCGAN",
+  "batch_size": 1
+ },
+ "Elmo": {
+  "model_path": "workload/elmo",
+  "batch_size": 1
+ },
+ "Time_series_LSTM": {
+  "model_path": "workload/time_series_LSTM",
+  "batch_size": 1
+ },
+ "Unet": {
+  "model_path": "workload/Unet",
+  "batch_size": 1
+ },
+ "YOLOv4":{
+ "model_path":"mlp/yolov4/YOLOv4.pb",
+ "batch_size": 1
+ },
+ "centernet_hg104":{
+ "model_path":"workload/centernet_hg104",
+ "batch_size": 1
+ },
+ "WD":{
+ "model_path":"workload/WD",
+ "batch_size": 1
+ },
+ "adv_inception_v3":{
+ "model_path":"dpg/adv_inception_v3/adv_inception_v3.pb",
+ "batch_size": 1
+ },
+ "ens3_adv_inception_v3":{
+ "model_path":"dpg/ens3_inception_v3/ens3_adv_inception_v3.pb",
+ "batch_size": 1
+ },
+ "NCF":{
+ "model_path":"mlp/NCF/NCF.pb",
+ "batch_size": 1
+ },
+ "faster_rcnn_inception_resnet_v2_atrous_lowproposals_oid":{
+ "model_path":"mlp/faster_rcnn_inception_resnet_v2_atrous_lowproposals_oid/faster_rcnn_inception_resnet_v2_atrous_lowproposals_oid.pb",
+ "batch_size": 1
+ },
+ "faster_rcnn_inception_resnet_v2_atrous_oid":{
+ "model_path":"mlp/faster_rcnn_inception_resnet_v2_atrous_oid/faster_rcnn_inception_resnet_v2_atrous_oid.pb",
+ "batch_size": 1
+ },
+ "faster_rcnn_resnet101_snapshot_serengeti":{
+ "model_path":"mlp/faster_rcnn_resnet101_snapshot_serengeti/faster_rcnn_resnet101_snapshot_serengeti.pb",
+ "batch_size": 1
+ },
+ "ssd_mobilenet_v1_0.75_depth_300x300_coco":{
+ "model_path":"mlp/ssd_mobilenet_v1_0.75_depth_300x300_coco/ssd_mobilenet_v1_0.75_depth_300x300_coco.pb",
+ "batch_size": 1
+ },
+ "ssd_mobilenet_v1_ppn_shared_box_predictor_300x300_coco":{
+ "model_path":"mlp/ssd_mobilenet_v1_ppn_shared_box_predictor_300x300_coco/ssd_mobilenet_v1_ppn_shared_box_predictor_300x300_coco.pb",
+ "batch_size": 1
+ },
+ "3DUNet":{
+ "model_path":"mlp/3D-Unet/3DUNet.pb",
+ "batch_size": 1
+ }
+}

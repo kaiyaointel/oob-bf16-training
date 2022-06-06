@@ -1,0 +1,9 @@
+click
+bson
+pandas
+sklearn
+tensorflow==1.15.2
+tqdm
+requests
+bottleneck
+numpy>=1.15

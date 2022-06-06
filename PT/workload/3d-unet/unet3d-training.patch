@@ -1,0 +1,262 @@
+diff --git a/pytorch3dunet/train.py b/pytorch3dunet/train.py
+index 41f22d3..a378844 100755
+--- a/pytorch3dunet/train.py
++++ b/pytorch3dunet/train.py
+@@ -16,11 +16,11 @@ from pytorch3dunet.unet3d.utils import get_number_of_learnable_parameters
+ 
+ logger = get_logger('UNet3DTrain')
+ 
+-
+-def _create_trainer(config, model, optimizer, lr_scheduler, loss_criterion, eval_criterion, loaders):
++def _create_trainer(config, model, optimizer, lr_scheduler, loss_criterion, eval_criterion, loaders, bf16_train_cpu, bf16_train_cuda):
+     assert 'trainer' in config, 'Could not find trainer configuration'
+     trainer_config = config['trainer']
+-
++    print("bf16_train_cpu ", bf16_train_cpu)
++    print("bf16_train_cuda ", bf16_train_cuda)
+     resume = trainer_config.get('resume', None)
+     pre_trained = trainer_config.get('pre_trained', None)
+     skip_train_validation = trainer_config.get('skip_train_validation', False)
+@@ -54,7 +54,7 @@ def _create_trainer(config, model, optimizer, lr_scheduler, loss_criterion, eval
+                              log_after_iters=trainer_config['log_after_iters'],
+                              eval_score_higher_is_better=trainer_config['eval_score_higher_is_better'],
+                              tensorboard_formatter=tensorboard_formatter,
+-                             skip_train_validation=skip_train_validation)
++                             skip_train_validation=skip_train_validation, bf16_train_cpu=bf16_train_cpu, bf16_train_cuda=bf16_train_cuda)
+ 
+ 
+ def _create_optimizer(config, model):
+@@ -82,7 +82,7 @@ def _create_lr_scheduler(config, optimizer):
+ 
+ def main():
+     # Load and log experiment configuration
+-    config = load_config()
++    config, bf16_train_cpu, bf16_train_cuda = load_config()
+     logger.info(config)
+ 
+     manual_seed = config.get('manual_seed', None)
+@@ -124,7 +124,9 @@ def main():
+ 
+     # Create model trainer
+     trainer = _create_trainer(config, model=model, optimizer=optimizer, lr_scheduler=lr_scheduler,
+-                              loss_criterion=loss_criterion, eval_criterion=eval_criterion, loaders=loaders)
++                              loss_criterion=loss_criterion, eval_criterion=eval_criterion, loaders=loaders, 
++                              bf16_train_cpu=bf16_train_cpu, bf16_train_cuda=bf16_train_cuda)
++                              
+     # Start training
+     trainer.fit()
+ 
+diff --git a/pytorch3dunet/unet3d/config.py b/pytorch3dunet/unet3d/config.py
+index b3c0683..7293b13 100644
+--- a/pytorch3dunet/unet3d/config.py
++++ b/pytorch3dunet/unet3d/config.py
+@@ -11,6 +11,8 @@ logger = utils.get_logger('ConfigLoader')
+ def load_config():
+     parser = argparse.ArgumentParser(description='UNet3D')
+     parser.add_argument('--config', type=str, help='Path to the YAML config file', required=True)
++    parser.add_argument('--bf16-train-cpu', action='store_true')
++    parser.add_argument('--bf16-train-cuda', action='store_true')
+     args = parser.parse_args()
+     config = _load_config_yaml(args.config)
+     # Get a device to train on
+@@ -26,7 +28,7 @@ def load_config():
+ 
+     device = torch.device(device_str)
+     config['device'] = device
+-    return config
++    return config, args.bf16_train_cpu, args.bf16_train_cuda
+ 
+ 
+ def _load_config_yaml(config_file):
+diff --git a/pytorch3dunet/unet3d/trainer.py b/pytorch3dunet/unet3d/trainer.py
+index 7e9cffc..b8aafe9 100644
+--- a/pytorch3dunet/unet3d/trainer.py
++++ b/pytorch3dunet/unet3d/trainer.py
+@@ -10,6 +10,7 @@ from . import utils
+ 
+ logger = get_logger('UNet3DTrainer')
+ 
++import time #kyao
+ 
+ class UNet3DTrainer:
+     """3D UNet trainer.
+@@ -49,7 +50,7 @@ class UNet3DTrainer:
+                  validate_after_iters=100, log_after_iters=100,
+                  validate_iters=None, num_iterations=1, num_epoch=0,
+                  eval_score_higher_is_better=True, best_eval_score=None,
+-                 tensorboard_formatter=None, skip_train_validation=False):
++                 tensorboard_formatter=None, skip_train_validation=False, bf16_train_cpu=False, bf16_train_cuda=False):
+ 
+         self.model = model
+         self.optimizer = optimizer
+@@ -65,6 +66,8 @@ class UNet3DTrainer:
+         self.log_after_iters = log_after_iters
+         self.validate_iters = validate_iters
+         self.eval_score_higher_is_better = eval_score_higher_is_better
++        self.bf16_train_cpu = bf16_train_cpu
++        self.bf16_train_cuda = bf16_train_cuda
+ 
+         logger.info(model)
+         logger.info(f'eval_score_higher_is_better: {eval_score_higher_is_better}')
+@@ -150,6 +153,7 @@ class UNet3DTrainer:
+         logger.info(f"Reached maximum number of epochs: {self.max_num_epochs}. Finishing training...")
+ 
+     def train(self, train_loader):
++        batch_time = utils.AverageMeter('Time', ':6.3f') #kyao
+         """Trains the model for 1 epoch.
+ 
+         Args:
+@@ -163,13 +167,12 @@ class UNet3DTrainer:
+ 
+         # sets the model in training mode
+         self.model.train()
+-
++        end = time.time() #kyao
+         for i, t in enumerate(train_loader):
+             logger.info(
+                 f'Training iteration {self.num_iterations}. Batch {i}. Epoch [{self.num_epoch}/{self.max_num_epochs - 1}]')
+ 
+             input, target, weight = self._split_training_batch(t)
+-
+             output, loss = self._forward_pass(input, target, weight)
+ 
+             train_losses.update(loss.item(), self._batch_size(input))
+@@ -178,6 +181,8 @@ class UNet3DTrainer:
+             self.optimizer.zero_grad()
+             loss.backward()
+             self.optimizer.step()
++            batch_time.update(time.time() - end) #kyao
++            end = time.time() #kyao
+ 
+             if self.num_iterations % self.validate_after_iters == 0:
+                 # set the model in eval mode
+@@ -216,13 +221,19 @@ class UNet3DTrainer:
+                     f'Training stats. Loss: {train_losses.avg}. Evaluation score: {train_eval_scores.avg}')
+                 self._log_stats('train', train_losses.avg, train_eval_scores.avg)
+                 self._log_params()
+-                self._log_images(input, target, output, 'train_')
++                # self._log_images(input, target, output, 'train_')
+ 
+             if self.should_stop():
+                 return True
+ 
+             self.num_iterations += 1
+-
++        
++        ### performance computation #kyao
++        latency = batch_time.avg / self._batch_size(input) * 1000 #kyao
++        throughput = self._batch_size(input) / batch_time.avg #kyao
++        print('training latency: %.3f ms on %d epoch'%(latency, self.num_epoch)) #kyao
++        print('training throughput: %.3f fps on %d epoch'%(throughput, self.num_epoch)) #kyao
++        
+         return False
+ 
+     def should_stop(self):
+@@ -255,8 +266,8 @@ class UNet3DTrainer:
+                 input, target, weight = self._split_training_batch(t)
+ 
+                 output, loss = self._forward_pass(input, target, weight)
+-                if i % 100 == 0:
+-                    self._log_images(input, target, output, 'val_')
++                # if i % 100 == 0:
++                    # self._log_images(input, target, output, 'val_')
+ 
+                 val_losses.update(loss.item(), self._batch_size(input))
+ 
+@@ -293,13 +304,35 @@ class UNet3DTrainer:
+ 
+     def _forward_pass(self, input, target, weight=None):
+         # forward pass
+-        output = self.model(input)
+-
+-        # compute the loss
+-        if weight is None:
+-            loss = self.loss_criterion(output, target)
++        if self.bf16_train_cpu:
++            print("cpu bf16 training...")
++            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                output = self.model(input)
++
++                # compute the loss
++                if weight is None:
++                    loss = self.loss_criterion(output, target)
++                else:
++                    loss = self.loss_criterion(output, target, weight)
++        elif self.bf16_train_cuda:
++            print("cuda bf16 training...")
++            with torch.cuda.amp.autocast(enabled=True):
++                output = self.model(input)
++
++                # compute the loss
++                if weight is None:
++                    loss = self.loss_criterion(output, target)
++                else:
++                    loss = self.loss_criterion(output, target, weight)
+         else:
+-            loss = self.loss_criterion(output, target, weight)
++            print("no bf16 training...")
++            output = self.model(input)
++
++            # compute the loss
++            if weight is None:
++                loss = self.loss_criterion(output, target)
++            else:
++                loss = self.loss_criterion(output, target, weight)
+ 
+         return output, loss
+ 
+diff --git a/pytorch3dunet/unet3d/utils.py b/pytorch3dunet/unet3d/utils.py
+index 40c11c1..220d6cc 100644
+--- a/pytorch3dunet/unet3d/utils.py
++++ b/pytorch3dunet/unet3d/utils.py
+@@ -120,6 +120,28 @@ class RunningAverage:
+         self.sum += value * n
+         self.avg = self.sum / self.count
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
+ 
+ def find_maximum_patch_size(model, device):
+     """Tries to find the biggest patch size that can be send to GPU for inference
+diff --git a/resources/train_config_ce.yaml b/resources/train_config_ce.yaml
+index 0213e80..87bc3d5 100644
+--- a/resources/train_config_ce.yaml
++++ b/resources/train_config_ce.yaml
+@@ -29,7 +29,7 @@ trainer:
+   # how many iterations between tensorboard logging
+   log_after_iters: 20
+   # max number of epochs
+-  epochs: 50
++  epochs: 1
+   # max number of iterations
+   iters: 100000
+   # model with higher eval score is considered better
+@@ -70,7 +70,7 @@ loaders:
+   # when reading from multiple threads.
+   dataset: StandardHDF5Dataset
+   # batch dimension; if number of GPUs is N > 1, then a batch_size of N * batch_size will automatically be taken for DataParallel
+-  batch_size: 1
++  batch_size: 4
+   # how many subprocesses to use for data loading
+   num_workers: 4
+   # path to the raw data within the H5

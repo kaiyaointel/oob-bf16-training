@@ -1,0 +1,137 @@
+diff --git a/data b/data
+index d0fce43..cc6b005 120000
+--- a/data
++++ b/data
+@@ -1 +1 @@
+-../make-ipinyou-data/3358
+\ No newline at end of file
++/home/chaofanl/workspace/tf_models_benchmark/make-ipinyou-data/2997
+\ No newline at end of file
+diff --git a/python/main.py b/python/main.py
+index fd05544..5b162ca 100644
+--- a/python/main.py
++++ b/python/main.py
+@@ -53,7 +53,7 @@ batch_size = 1024
+ field_sizes = utils.FIELD_SIZES
+ field_offsets = utils.FIELD_OFFSETS
+ 
+-algo = 'pnn2'
++algo = 'pnn2' #fnn/deepfm/lr/fm/ccpm/pnn
+ 
+ if algo in {'fnn', 'ccpm', 'pnn1', 'pnn2', 'deepfm'}:
+     train_data = utils.split_data(train_data)
+diff --git a/python/models.py b/python/models.py
+index 0ec6a74..f6bb3b1 100644
+--- a/python/models.py
++++ b/python/models.py
+@@ -74,11 +74,14 @@ class LR(Model):
+                 tf.nn.sigmoid_cross_entropy_with_logits(labels=self.y, logits=logits)) + \
+                         l2_weight * tf.nn.l2_loss(xw)
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/lr/' + "model.ckpt"
++            saver.save(self.sess, save_path)
+ 
+ 
+ class FM(Model):
+@@ -114,11 +117,14 @@ class FM(Model):
+                         l2_w * tf.nn.l2_loss(xw) + \
+                         l2_v * tf.nn.l2_loss(xv)
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/fm/' + "model.ckpt"
++            saver.save(self.sess, save_path)
+ 
+ 
+ class FNN(Model):
+@@ -169,11 +175,14 @@ class FNN(Model):
+                     wi = self.vars['w%d' % i]
+                     self.loss += layer_l2[i] * tf.nn.l2_loss(wi)
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/fnn/' + "model.ckpt"
++            saver.save(self.sess, save_path)
+ 
+ 
+ class DeepFM(Model):
+@@ -237,11 +246,14 @@ class DeepFM(Model):
+                     wi = self.vars['w%d' % i]
+                     self.loss += layer_l2[i] * tf.nn.l2_loss(wi)
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/deepfm/' + "model.ckpt"
++            saver.save(self.sess, save_path)
+ 
+ 
+ class CCPM(Model):
+@@ -300,11 +312,15 @@ class CCPM(Model):
+             self.loss = tf.reduce_mean(
+                 tf.nn.sigmoid_cross_entropy_with_logits(logits=l, labels=self.y))
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/ccpm/' + "model.ckpt"
++            saver.save(self.sess, save_path)
++
+ 
+ 
+ class PNN1(Model):
+@@ -392,11 +408,14 @@ class PNN1(Model):
+                     wi = self.vars['w%d' % i]
+                     self.loss += layer_l2[i] * tf.nn.l2_loss(wi)
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/pnn1/' + "model.ckpt"
++            saver.save(self.sess, save_path)
+ 
+ 
+ class PNN2(Model):
+@@ -522,8 +541,12 @@ class PNN2(Model):
+                     wi = self.vars['w%d' % i]
+                     self.loss += layer_l2[i] * tf.nn.l2_loss(wi)
+             self.optimizer = utils.get_optimizer(opt_algo, learning_rate, self.loss)
+-
++            saver = tf.train.Saver() #added
+             config = tf.ConfigProto()
+             config.gpu_options.allow_growth = True
+             self.sess = tf.Session(config=config)
+             tf.global_variables_initializer().run(session=self.sess)
++            print("saveing model..................")
++            save_path = '/home/chaofanl/workspace/tf_models_benchmark/product-nets/python/pnn2/' + "model.ckpt"
++            saver.save(self.sess, save_path)
++

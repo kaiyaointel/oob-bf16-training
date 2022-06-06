@@ -1,0 +1,141 @@
+[submodule "PT/EfficientNet"]
+	path = PT/EfficientNet
+	url = https://github.com/lukemelas/EfficientNet-PyTorch.git
+[submodule "PT/pretrained-models"]
+	path = PT/pretrained-models
+	url = https://github.com/Cadene/pretrained-models.pytorch.git
+[submodule "PT/gen-efficientnet-pytorch"]
+	path = PT/gen-efficientnet-pytorch
+	url = https://github.com/rwightman/gen-efficientnet-pytorch.git
+[submodule "TF/workload/models"]
+	path = TF/workload/models
+	url = https://github.com/tensorflow/models.git
+[submodule "TF/workload/GPT-2/gpt-2"]
+	path = TF/workload/GPT-2/gpt-2
+	url = https://github.com/openai/gpt-2.git
+[submodule "PT/3d-unet"]
+	path = PT/3d-unet
+	url = https://github.com/wolny/pytorch-3dunet
+[submodule "PT/crnn"]
+	path = PT/crnn
+	url = https://github.com/meijieru/crnn.pytorch
+[submodule "PT/ssd300"]
+	path = PT/ssd300
+	url = https://github.com/mlperf/training.git
+[submodule "PT/maskrcnn"]
+	path = PT/maskrcnn
+	url = https://github.com/mlperf/training.git
+[submodule "PT/retinanet"]
+	path = PT/retinanet
+	url = https://github.com/facebookresearch/detectron2
+[submodule "PT/bert-large"]
+	path = PT/bert-large
+	url = https://github.com/huggingface/transformers
+[submodule "PT/transformer-lt"]
+	path = PT/transformer-lt
+	url = https://github.com/pytorch/fairseq
+[submodule "PT/rnn-t"]
+	path = PT/rnn-t
+	url = https://github.com/mlperf/training.git
+[submodule "PT/dcgan"]
+	path = PT/dcgan
+	url = https://github.com/pytorch/examples
+[submodule "PT/wide_deep"]
+	path = PT/wide_deep
+	url = https://github.com/jrzaurin/pytorch-widedeep
+[submodule "PT/resnext"]
+	path = PT/resnext
+	url = https://github.com/facebookresearch/ClassyVision
+[submodule "PT/facenet"]
+	path = PT/facenet
+	url = https://github.com/timesler/facenet-pytorch
+[submodule "PT/TTS"]
+	path = PT/TTS
+	url = https://github.com/mozilla/TTS
+[submodule "PT/transformers"]
+	path = PT/transformers
+	url = https://github.com/huggingface/transformers.git
+[submodule "PT/rnn_inf"]
+	path = PT/rnn_inf
+	url = https://github.com/mlperf/inference.git
+[submodule "PT/MGANet"]
+	path = PT/MGANet
+	url = https://github.com/mengab/MGANet-DCC2020.git
+[submodule "PT/pytorch-ssd"]
+	path = PT/pytorch-ssd
+	url = https://github.com/qfgaohao/pytorch-ssd
+[submodule "PT/MiDaS"]
+	path = PT/MiDaS
+	url = https://github.com/intel-isl/MiDaS
+[submodule "PT/transformer-xl"]
+	path = PT/transformer-xl
+	url = https://github.com/kimiyoung/transformer-xl.git
+[submodule "PT/PyTorch-GAN"]
+	path = PT/PyTorch-GAN
+	url = https://github.com/eriklindernoren/PyTorch-GAN
+[submodule "PT/YOLOV2"]
+	path = PT/YOLOV2
+	url = https://github.com/yjh0410/yolov2-yolov3_PyTorch.git
+[submodule "PT/pytorch-unet"]
+	path = PT/pytorch-unet
+	url = https://github.com/usuyama/pytorch-unet.git
+[submodule "PT/VAE"]
+	path = PT/VAE
+	url = https://github.com/AntixK/PyTorch-VAE.git
+[submodule "PT/ResNeSt"]
+	path = PT/ResNeSt
+	url = https://github.com/zhanghang1989/ResNeSt.git
+[submodule "PT/GCN"]
+	path = PT/GCN
+	url = https://github.com/tkipf/pygcn.git
+[submodule "PT/reformer-pytorch"]
+	path = PT/reformer-pytorch
+	url = https://github.com/lucidrains/reformer-pytorch.git
+[submodule "PT/attention-module"]
+	path = PT/attention-module
+	url = https://github.com/Jongchan/attention-module.git
+[submodule "PT/CenterNet"]
+	path = PT/CenterNet
+	url = https://github.com/Duankaiwen/CenterNet.git
+[submodule "PT/HBONet"]
+	path = PT/HBONet
+	url = https://github.com/d-li14/HBONet.git
+[submodule "PT/deit"]
+	path = PT/deit
+	url = https://github.com/facebookresearch/deit
+[submodule "PT/vnet.pytorch"]
+	path = PT/vnet.pytorch
+	url = https://github.com/zyody/vnet.pytorch
+[submodule "PT/YOLOV3"]
+	path = PT/YOLOV3
+	url = https://github.com/eriklindernoren/PyTorch-YOLOv3.git
+[submodule "PT/pytorch-a3c"]
+	path = PT/pytorch-a3c
+	url = https://github.com/ikostrikov/pytorch-a3c.git
+[submodule "PT/mlperf_training"]
+	path = PT/mlperf_training
+	url = https://github.com/mlcommons/training.git
+[submodule "PT/dlrm"]
+	path = PT/dlrm
+	url = https://github.com/facebookresearch/dlrm
+[submodule "PT/distilbert"]
+	path = PT/distilbert
+	url = https://github.com/huggingface/transformers.git
+[submodule "PT/conv-seq-seq"]
+	path = PT/conv-seq-seq
+	url = https://github.com/pytorch/fairseq.git
+[submodule "PT/Reformer"]
+	path = PT/Reformer
+	url = https://github.com/lucidrains/reformer-pytorch.git
+[submodule "PT/DIEN"]
+	path = PT/DIEN
+	url = https://github.com/mouna99/dien
+[submodule "PT/EfficientDet"]
+	path = PT/EfficientDet
+	url = https://github.com/toandaominh1997/EfficientDet.Pytorch.git
+[submodule "PT/SASRec.pytorch"]
+	path = PT/SASRec.pytorch
+	url = https://github.com/pmixer/SASRec.pytorch
+[submodule "PT/gpt-2"]
+	path = PT/gpt-2
+	url = https://github.com/huggingface/transformers.git

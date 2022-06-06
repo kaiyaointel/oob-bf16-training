@@ -1,0 +1,39 @@
+diff --git a/geffnet/conv2d_layers.py b/geffnet/conv2d_layers.py
+index 77d06f1..2984a43 100644
+--- a/geffnet/conv2d_layers.py
++++ b/geffnet/conv2d_layers.py
+@@ -1,7 +1,7 @@
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+-from torch._six import container_abcs
++# from torch._six import container_abcs
+ 
+ from itertools import repeat
+ from functools import partial
+@@ -11,6 +11,13 @@ import math
+ 
+ from .config import *
+ 
++# from torch._six import container_abcs
++TORCH_MAJOR = int(torch.__version__.split('.')[0])
++TORCH_MINOR = int(torch.__version__.split('.')[1])
++if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
++    from torch._six import container_abcs
++else:
++    import collections.abc as container_abcs
+ 
+ def _ntuple(n):
+     def parse(x):
+diff --git a/setup.py b/setup.py
+index e43b364..4b8f1c0 100644
+--- a/setup.py
++++ b/setup.py
+@@ -41,6 +41,6 @@ setup(
+     # Note that this is a string of words separated by whitespace, not a list.
+     keywords='pytorch pretrained models efficientnet mixnet mobilenetv3 mnasnet',
+     packages=find_packages(exclude=['data']),
+-    install_requires=['torch >= 1.2', 'torchvision'],
++    install_requires=['torch >= 1.2'],
+     python_requires='>=3.6',
+ )

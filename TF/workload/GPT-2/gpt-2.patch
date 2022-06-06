@@ -1,0 +1,121 @@
+diff --git a/src/generate_unconditional_samples.py b/src/generate_unconditional_samples.py
+index eaf9a63..b124f63 100755
+--- a/src/generate_unconditional_samples.py
++++ b/src/generate_unconditional_samples.py
+@@ -3,15 +3,19 @@
+ import fire
+ import json
+ import os
++import time
+ import numpy as np
+-import tensorflow as tf
+-
+ import model, sample, encoder
+ 
++try:
++    import tensorflow.compat.v1 as tf
++except ImportError:
++    import tensorflow as tf
++
+ def sample_model(
+     model_name='124M',
+     seed=None,
+-    nsamples=0,
++    nsamples=10,
+     batch_size=1,
+     length=None,
+     temperature=1,
+@@ -67,13 +71,26 @@ def sample_model(
+         saver.restore(sess, ckpt)
+ 
+         generated = 0
++        tic = 0
++        total_word = 0
+         while nsamples == 0 or generated < nsamples:
++            if generated == 1:
++                tic = time.time()
+             out = sess.run(output)
++            
+             for i in range(batch_size):
+                 generated += batch_size
+                 text = enc.decode(out[i])
++                if generated >=1:
++                    total_word += len(text.split())
+                 print("=" * 40 + " SAMPLE " + str(generated) + " " + "=" * 40)
+-                print(text)
++                print("Total words for now is: %f" % total_word )
++                print("Throughput for now is: %f" % (total_word / (time.time() - tic)))
++                #print(text)
++            
++        toc = time.time()
++        print("Total words is: %f" % total_word )
++        print("Throughput: %f" % (total_word / (toc - tic)))
+ 
+ if __name__ == '__main__':
+     fire.Fire(sample_model)
+diff --git a/src/model.py b/src/model.py
+index 230b83c..ba9474a 100644
+--- a/src/model.py
++++ b/src/model.py
+@@ -1,6 +1,9 @@
+ import numpy as np
+-import tensorflow as tf
+-from tensorflow.contrib.training import HParams
++try:
++    import tensorflow.compat.v1 as tf
++except ImportError:
++    import tensorflow as tf
++from hparams import HParams
+ 
+ def default_hparams():
+     return HParams(
+@@ -28,7 +31,7 @@ def gelu(x):
+ def norm(x, scope, *, axis=-1, epsilon=1e-5):
+     """Normalize to mean = 0, std = 1, then do a diagonal affine transform."""
+     with tf.variable_scope(scope):
+-        n_state = x.shape[-1].value
++        n_state = x.shape[-1]
+         g = tf.get_variable('g', [n_state], initializer=tf.constant_initializer(1))
+         b = tf.get_variable('b', [n_state], initializer=tf.constant_initializer(0))
+         u = tf.reduce_mean(x, axis=axis, keepdims=True)
+@@ -91,7 +94,7 @@ def attn(x, scope, n_state, *, past, hparams):
+     def multihead_attn(q, k, v):
+         # q, k, v have shape [batch, heads, sequence, features]
+         w = tf.matmul(q, k, transpose_b=True)
+-        w = w * tf.rsqrt(tf.cast(v.shape[-1].value, w.dtype))
++        w = w * tf.rsqrt(tf.cast(v.shape[-1], w.dtype))
+ 
+         w = mask_attn_weights(w)
+         w = softmax(w)
+@@ -114,7 +117,7 @@ def attn(x, scope, n_state, *, past, hparams):
+ 
+ def mlp(x, scope, n_state, *, hparams):
+     with tf.variable_scope(scope):
+-        nx = x.shape[-1].value
++        nx = x.shape[-1]
+         h = gelu(conv1d(x, 'c_fc', n_state))
+         h2 = conv1d(h, 'c_proj', nx)
+         return h2
+@@ -122,7 +125,7 @@ def mlp(x, scope, n_state, *, hparams):
+ 
+ def block(x, scope, *, past, hparams):
+     with tf.variable_scope(scope):
+-        nx = x.shape[-1].value
++        nx = x.shape[-1]
+         a, present = attn(norm(x, 'ln_1'), 'attn', nx, past=past, hparams=hparams)
+         x = x + a
+         m = mlp(norm(x, 'ln_2'), 'mlp', nx*4, hparams=hparams)
+diff --git a/src/sample.py b/src/sample.py
+index c90ed28..9232fcc 100644
+--- a/src/sample.py
++++ b/src/sample.py
+@@ -1,4 +1,8 @@
+-import tensorflow as tf
++
++try:
++    import tensorflow.compat.v1 as tf
++except ImportError:
++    import tensorflow as tf
+ 
+ import model
+ 

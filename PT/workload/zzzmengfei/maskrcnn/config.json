@@ -1,0 +1,30 @@
+{
+    "framework": "PyTorch",
+    "model": "maskrcnn",
+    "requirement": "requirements.txt",
+    
+    "benchmark": [
+        {
+            "basecommit": "",
+            "patch": "maskrcnn.diff",
+            "precision": "fp32",
+            "mode": "throughput",
+            "batch_size": "8,16,32,64,128,256",
+            "cores_per_instance": "24",
+            "checkpoint": "",
+            "dataset": "",
+            "script_path": "run_maskrcnn.sh"
+        },
+        {
+            "basecommit": "",
+            "patch": "maskrcnn.diff",
+            "precision": "fp32",
+            "mode": "realtime",
+            "batch_size": "1",
+            "cores_per_instance": "4",
+            "checkpoint": "",
+            "dataset": "",
+            "script_path": "run_maskrcnn.sh"
+        }
+    ]
+}

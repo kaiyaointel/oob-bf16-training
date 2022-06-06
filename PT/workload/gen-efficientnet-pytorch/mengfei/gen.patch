@@ -1,0 +1,27 @@
+diff --git a/geffnet/conv2d_layers.py b/geffnet/conv2d_layers.py
+index 77d06f1..2984a43 100644
+--- a/geffnet/conv2d_layers.py
++++ b/geffnet/conv2d_layers.py
+@@ -1,7 +1,7 @@
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+-from torch._six import container_abcs
++# from torch._six import container_abcs
+ 
+ from itertools import repeat
+ from functools import partial
+@@ -11,6 +11,13 @@ import math
+ 
+ from .config import *
+ 
++# from torch._six import container_abcs
++TORCH_MAJOR = int(torch.__version__.split('.')[0])
++TORCH_MINOR = int(torch.__version__.split('.')[1])
++if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
++    from torch._six import container_abcs
++else:
++    import collections.abc as container_abcs
+ 
+ def _ntuple(n):
+     def parse(x):

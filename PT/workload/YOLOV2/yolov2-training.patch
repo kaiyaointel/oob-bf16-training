@@ -1,0 +1,191 @@
+diff --git a/backbone/darknet.py b/backbone/darknet.py
+index ce1ad15..519bc9d 100644
+--- a/backbone/darknet.py
++++ b/backbone/darknet.py
+@@ -270,7 +270,7 @@ def darknet19(pretrained=False, hr=False, **kwargs):
+             model.load_state_dict(torch.load(path_to_dir + '/weights/darknet19_hr_75.52_92.73.pth', map_location='cuda'), strict=False)
+         else:
+             print('Loading the darknet19 ...')
+-            model.load_state_dict(torch.load(path_to_dir + '/weights/darknet19_72.96.pth', map_location='cuda'), strict=False)
++            model.load_state_dict(torch.load(path_to_dir + '/weights/darknet19_72.96.pth', map_location=torch.device('cpu')), strict=False)
+     return model
+ 
+ def darknet53(pretrained=False, hr=False, **kwargs):
+diff --git a/data/voc0712.py b/data/voc0712.py
+index d8bc3f6..b1e0657 100644
+--- a/data/voc0712.py
++++ b/data/voc0712.py
+@@ -28,7 +28,7 @@ path_to_dir = osp.dirname(osp.abspath(__file__))
+ VOC_ROOT = path_to_dir + "/VOCdevkit/"
+ 
+ VOC_ROOT = "/home/k303/object-detection/dataset/VOCdevkit/"
+-
++VOC_ROOT = "/home2/pytorch-broad-models/YOLOV2/VOCdevkit/"
+ 
+ class VOCAnnotationTransform(object):
+     """Transforms a VOC annotation into a Tensor of bbox coords and label index
+@@ -97,7 +97,7 @@ class VOCDetection(data.Dataset):
+     """
+ 
+     def __init__(self, root,
+-                 image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
++                 image_sets=[('2007', 'test')],
+                  transform=None, target_transform=VOCAnnotationTransform(),
+                  dataset_name='VOC0712'):
+         self.root = root
+@@ -110,12 +110,12 @@ class VOCDetection(data.Dataset):
+         self.ids = list()
+         for (year, name) in image_sets:
+             rootpath = osp.join(self.root, 'VOC' + year)
++            print(rootpath)
+             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
+                 self.ids.append((rootpath, line.strip()))
+ 
+     def __getitem__(self, index):
+         im, gt, h, w = self.pull_item(index)
+-
+         return im, gt
+ 
+     def __len__(self):
+@@ -126,7 +126,6 @@ class VOCDetection(data.Dataset):
+ 
+     def pull_item(self, index):
+         img_id = self.ids[index]
+-
+         target = ET.parse(self._annopath % img_id).getroot()
+         img = cv2.imread(self._imgpath % img_id)
+         height, width, channels = img.shape
+diff --git a/train_voc.py b/train_voc.py
+index b99f2f1..8625a05 100644
+--- a/train_voc.py
++++ b/train_voc.py
+@@ -55,6 +55,8 @@ def parse_args():
+                         help='use tensorboard')
+     parser.add_argument('--resume', type=str, default=None,
+                         help='fine tune the model trained on MSCOCO.')
++    parser.add_argument('--bf16-train-cpu', action='store_true')
++    parser.add_argument('--bf16-train-cuda', action='store_true')
+ 
+     return parser.parse_args()
+ 
+@@ -68,6 +70,7 @@ def setup_seed(seed):
+ 
+ # setup_seed(20)
+ def train():
++    batch_time = AverageMeter('Time', ':6.3f') #kyao
+     args = parse_args()
+ 
+     path_to_save = os.path.join(args.save_folder, args.version)
+@@ -165,6 +168,7 @@ def train():
+ 
+     epoch_size = len(dataset) // args.batch_size
+     max_epoch = cfg['max_epoch']
++    max_epoch = 1
+ 
+     data_loader = data.DataLoader(dataset, args.batch_size,
+                                   num_workers=args.num_workers,
+@@ -172,7 +176,8 @@ def train():
+                                   pin_memory=True)
+     # create batch iterator
+     t0 = time.time()
+-
++    end = time.time() #kyao
++    
+     # start training
+     for epoch in range(max_epoch):
+         
+@@ -191,7 +196,8 @@ def train():
+             if epoch in cfg['lr_epoch']:
+                 tmp_lr = tmp_lr * 0.1
+                 set_lr(optimizer, tmp_lr)
+-    
++        
++        print(data_loader)
+         for iter_i, (images, targets) in enumerate(data_loader):
+             # WarmUp strategy for learning rate
+             if not args.no_warm_up:
+@@ -217,13 +223,26 @@ def train():
+             targets = torch.tensor(targets).float().to(device)
+ 
+             # forward and loss
+-            conf_loss, cls_loss, txtytwth_loss, total_loss = model(images, target=targets)
++            if args.bf16_train_cpu:
++                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                    print('bf16 train on cpu...')
++                    conf_loss, cls_loss, txtytwth_loss, total_loss = model(images, target=targets)
++            elif args.bf16_train_cuda:
++                with torch.cuda.amp.autocast(enabled=True):
++                    print('bf16 train on cuda...')
++                    conf_loss, cls_loss, txtytwth_loss, total_loss = model(images, target=targets)
++            else:
++                conf_loss, cls_loss, txtytwth_loss, total_loss = model(images, target=targets)
++            
+                      
+             # backprop and update
+             total_loss.backward()
+             optimizer.step()
+             optimizer.zero_grad()
+ 
++            batch_time.update(time.time() - end) #kyao
++            end = time.time() #kyao
++            
+             if iter_i % 10 == 0:
+                 if args.tfboard:
+                     # viz loss
+@@ -237,7 +256,7 @@ def train():
+                         % (epoch+1, max_epoch, iter_i, epoch_size, tmp_lr,
+                             conf_loss.item(), cls_loss.item(), txtytwth_loss.item(), total_loss.item(), input_size[0], t1-t0),
+                         flush=True)
+-
++                        
+                 t0 = time.time()
+ 
+             # multi-scale trick
+@@ -251,17 +270,46 @@ def train():
+                 # I don't know how to make it suit more workers, and I'm trying to solve this question.
+                 data_loader.dataset.reset_transform(SSDAugmentation(input_size, mean=(0.406, 0.456, 0.485), std=(0.225, 0.224, 0.229)))
+ 
++            ### performance computation #kyao
++            latency = batch_time.avg / args.batch_size * 1000 #kyao
++            throughput = args.batch_size / batch_time.avg #kyao
++            print('training latency: %.3f ms on %d epoch'%(latency, epoch)) #kyao
++            print('training throughput: %.3f fps on %d epoch'%(throughput, epoch)) #kyao
++            
+         if (epoch + 1) % 10 == 0:
+             print('Saving state, epoch:', epoch + 1)
+             torch.save(model.state_dict(), os.path.join(path_to_save, 
+                         args.version + '_' + repr(epoch + 1) + '.pth')  
+                     )
++                    
+ 
+ 
+ def set_lr(optimizer, lr):
+     for param_group in optimizer.param_groups:
+         param_group['lr'] = lr
+         
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
+ 
+ if __name__ == '__main__':
+     train()
+\ No newline at end of file

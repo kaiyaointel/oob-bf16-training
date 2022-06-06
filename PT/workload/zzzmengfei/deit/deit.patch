@@ -1,0 +1,409 @@
+diff --git a/engine.py b/engine.py
+index 655b805..1bab933 100644
+--- a/engine.py
++++ b/engine.py
+@@ -6,7 +6,7 @@ Train and eval functions used in main.py
+ import math
+ import sys
+ from typing import Iterable, Optional
+-
++import os
+ import torch
+ 
+ from timm.data import Mixup
+@@ -14,6 +14,8 @@ from timm.utils import accuracy, ModelEma
+ 
+ from losses import DistillationLoss
+ import utils
++#import intel_pytorch_extension as ipex
++import time
+ 
+ 
+ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+@@ -64,8 +66,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+ 
+ 
+ @torch.no_grad()
+-def evaluate(data_loader, model, device):
+-    criterion = torch.nn.CrossEntropyLoss()
++def evaluate(data_loader, model, device, args):
++    criterion = torch.nn.CrossEntropyLoss().to(device)
+ 
+     metric_logger = utils.MetricLogger(delimiter="  ")
+     header = 'Test:'
+@@ -73,24 +75,126 @@ def evaluate(data_loader, model, device):
+     # switch to evaluation mode
+     model.eval()
+ 
+-    for images, target in metric_logger.log_every(data_loader, 10, header):
+-        images = images.to(device, non_blocking=True)
+-        target = target.to(device, non_blocking=True)
+-
+-        # compute output
+-        with torch.cuda.amp.autocast():
+-            output = model(images)
+-            loss = criterion(output, target)
+-
+-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+-
+-        batch_size = images.shape[0]
+-        metric_logger.update(loss=loss.item())
+-        metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
+-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        if args.precision=="bfloat16":
++            conf = ipex.AmpConf(torch.bfloat16)
++            print("running bf16 evalation step\n")
++        else:
++            conf = ipex.AmpConf(None)
++            print("running fp32 evalation step\n")
++    
++    if args.dummy:
++        num = args.iterations + args.warmup_iterations
++        t = 0
++        for i in range(num):
++            images = torch.randn(args.batch_size, 3, 224, 224)
++            if args.ipex:
++                with ipex.AutoMixPrecision(conf, running_mode="inference"):
++                    images = images.to(device, non_blocking=True)
++                    if i >= args.warmup_iterations:
++                        start = time.time()
++                    if args.profile:
++                        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                            output = model(images)
++                    else:
++                        output = model(images)
++                    if i >= args.warmup_iterations:
++                        end = time.time()
++                        t += end - start
++            else:
++                images = images.to(device, non_blocking=True)
++                if args.channels_last:
++                    oob_images = images
++                    oob_images = oob_images.to(memory_format=torch.channels_last)
++                    images = oob_images
++                if i >= args.warmup_iterations:
++                    start = time.time()
++                if args.profile:
++                    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                        if args.precision == 'bfloat16':
++                            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                                output = model(images)
++                        else:
++                            output = model(images)
++                else:
++                    if args.precision == 'bfloat16':
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            output = model(images)
++                    else:
++                        output = model(images)
++
++                if i >= args.warmup_iterations:
++                    end = time.time()
++                    t += end - start
++        
++        print('Throughput is: %f imgs/s' % (args.batch_size * args.iterations / t))
++
++        if args.profile:
++            import pathlib
++            timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++            if not os.path.exists(timeline_dir):
++                os.makedirs(timeline_dir)
++            timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                        "deit" + str(i) + '-' + str(os.getpid()) + '.json'
++            print(timeline_file)
++            prof.export_chrome_trace(timeline_file)
++            # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++            # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++    else:
++        for images, target in metric_logger.log_every(data_loader, 10, header):
++            if args.ipex:
++                with ipex.AutoMixPrecision(conf, running_mode="inference"):
++                    images = images.to(device, non_blocking=True)
++                    target = target.to(device, non_blocking=True)
++
++                    # compute output
++                    output = model(images)
++                    loss = criterion(output, target)
++
++                    acc1, acc5 = accuracy(output, target, topk=(1, 5))
++
++                    batch_size = images.shape[0]
++                    metric_logger.update(loss=loss.item())
++                    metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
++                    metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
++            else:
++                images = images.to(device, non_blocking=True)
++                target = target.to(device, non_blocking=True)
++
++                # compute output
++                output = model(images)
++                loss = criterion(output, target)
++
++                acc1, acc5 = accuracy(output, target, topk=(1, 5))
++
++                batch_size = images.shape[0]
++                metric_logger.update(loss=loss.item())
++                metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
++                metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+     # gather the stats from all processes
+     metric_logger.synchronize_between_processes()
+-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
+-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
++    # print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
++    #     .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+ 
+     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
+diff --git a/main.py b/main.py
+index 06679f6..4a6a359 100644
+--- a/main.py
++++ b/main.py
+@@ -7,7 +7,7 @@ import time
+ import torch
+ import torch.backends.cudnn as cudnn
+ import json
+-
++import os
+ from pathlib import Path
+ 
+ from timm.data import Mixup
+@@ -27,7 +27,8 @@ import utils
+ 
+ def get_args_parser():
+     parser = argparse.ArgumentParser('DeiT training and evaluation script', add_help=False)
+-    parser.add_argument('--batch-size', default=64, type=int)
++    parser.add_argument('--profile', action='store_true', help='profile')
++    parser.add_argument('--batch-size', default=16, type=int)
+     parser.add_argument('--epochs', default=300, type=int)
+ 
+     # Model parameters
+@@ -42,7 +43,7 @@ def get_args_parser():
+ 
+     parser.add_argument('--model-ema', action='store_true')
+     parser.add_argument('--no-model-ema', action='store_false', dest='model_ema')
+-    parser.set_defaults(model_ema=True)
++    parser.set_defaults(model_ema=False)
+     parser.add_argument('--model-ema-decay', type=float, default=0.99996, help='')
+     parser.add_argument('--model-ema-force-cpu', action='store_true', default=False, help='')
+ 
+@@ -93,6 +94,7 @@ def get_args_parser():
+                         help='Use AutoAugment policy. "v0" or "original". " + \
+                              "(default: rand-m9-mstd0.5-inc1)'),
+     parser.add_argument('--smoothing', type=float, default=0.1, help='Label smoothing (default: 0.1)')
++    parser.add_argument('--arch', type=str, default="", help='model name')
+     parser.add_argument('--train-interpolation', type=str, default='bicubic',
+                         help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
+ 
+@@ -146,13 +148,11 @@ def get_args_parser():
+ 
+     parser.add_argument('--output_dir', default='',
+                         help='path where to save, empty for no saving')
+-    parser.add_argument('--device', default='cuda',
+-                        help='device to use for training / testing')
+     parser.add_argument('--seed', default=0, type=int)
+     parser.add_argument('--resume', default='', help='resume from checkpoint')
+     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
+                         help='start epoch')
+-    parser.add_argument('--eval', action='store_true', help='Perform evaluation only')
++    parser.add_argument('--eval', action='store_true', help='Perform evaluation only')  
+     parser.add_argument('--dist-eval', action='store_true', default=False, help='Enabling distributed evaluation')
+     parser.add_argument('--num_workers', default=10, type=int)
+     parser.add_argument('--pin-mem', action='store_true',
+@@ -165,6 +165,20 @@ def get_args_parser():
+     parser.add_argument('--world_size', default=1, type=int,
+                         help='number of distributed processes')
+     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
++    parser.add_argument('--ipex', action='store_true', default=False,
++                    help='use intel pytorch extension')
++    parser.add_argument('--channels_last', type=int, default=0,
++                        help='NHWC')
++    parser.add_argument('--precision', type=str, default="float32",
++                        help='precision, float32, bfloat16')
++    parser.add_argument('--jit', action='store_true', default=False,
++                        help='enable ipex jit fusionpath')
++    parser.add_argument('-w', '--warmup_iterations', default=5, type=int, metavar='N',
++                        help='number of warmup iterations to run')
++    parser.add_argument("--dummy", action='store_true',
++                        help="using  dummu data to test the performance of inference")
++    parser.add_argument('-i', '--iterations', default=100, type=int, metavar='N',
++                        help='number of total iterations to run')
+     return parser
+ 
+ 
+@@ -176,7 +190,11 @@ def main(args):
+     if args.distillation_type != 'none' and args.finetune and not args.eval:
+         raise NotImplementedError("Finetuning with distillation not yet supported")
+ 
+-    device = torch.device(args.device)
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        device = ipex.DEVICE
++    else:
++        device = torch.device('cpu')
+ 
+     # fix the seed for reproducibility
+     seed = args.seed + utils.get_rank()
+@@ -186,62 +204,65 @@ def main(args):
+ 
+     cudnn.benchmark = True
+ 
+-    dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
+-    dataset_val, _ = build_dataset(is_train=False, args=args)
+-
+-    if True:  # args.distributed:
+-        num_tasks = utils.get_world_size()
+-        global_rank = utils.get_rank()
+-        if args.repeated_aug:
+-            sampler_train = RASampler(
+-                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+-            )
+-        else:
+-            sampler_train = torch.utils.data.DistributedSampler(
+-                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+-            )
+-        if args.dist_eval:
+-            if len(dataset_val) % num_tasks != 0:
+-                print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
+-                      'This will slightly alter validation results as extra duplicate entries are added to achieve '
+-                      'equal num of samples per-process.')
+-            sampler_val = torch.utils.data.DistributedSampler(
+-                dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False)
++    if not args.dummy:
++        dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
++        dataset_val, _ = build_dataset(is_train=False, args=args)
++
++        if True:  # args.distributed:
++            num_tasks = utils.get_world_size()
++            global_rank = utils.get_rank()
++            if args.repeated_aug:
++                sampler_train = RASampler(
++                    dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
++                )
++            else:
++                sampler_train = torch.utils.data.DistributedSampler(
++                    dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
++                )
++            if args.dist_eval:
++                if len(dataset_val) % num_tasks != 0:
++                    print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
++                          'This will slightly alter validation results as extra duplicate entries are added to achieve '
++                          'equal num of samples per-process.')
++                sampler_val = torch.utils.data.DistributedSampler(
++                    dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False)
++            else:
++                sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+         else:
++            sampler_train = torch.utils.data.RandomSampler(dataset_train)
+             sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+-    else:
+-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
+-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+-
+-    data_loader_train = torch.utils.data.DataLoader(
+-        dataset_train, sampler=sampler_train,
+-        batch_size=args.batch_size,
+-        num_workers=args.num_workers,
+-        pin_memory=args.pin_mem,
+-        drop_last=True,
+-    )
+ 
+-    data_loader_val = torch.utils.data.DataLoader(
+-        dataset_val, sampler=sampler_val,
+-        batch_size=int(1.5 * args.batch_size),
+-        num_workers=args.num_workers,
+-        pin_memory=args.pin_mem,
+-        drop_last=False
+-    )
++        data_loader_train = torch.utils.data.DataLoader(
++            dataset_train, sampler=sampler_train,
++            batch_size=args.batch_size,
++            num_workers=args.num_workers,
++            pin_memory=args.pin_mem,
++            drop_last=True,
++        )
++
++        data_loader_val = torch.utils.data.DataLoader(
++            dataset_val, sampler=sampler_val,
++            batch_size=int(1.5 * args.batch_size),
++            num_workers=args.num_workers,
++            pin_memory=args.pin_mem,
++            drop_last=False
++        )
++    else:
++        data_loader_val = ''
+ 
+     mixup_fn = None
+     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
++    '''
+     if mixup_active:
+         mixup_fn = Mixup(
+             mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
+             prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
+             label_smoothing=args.smoothing, num_classes=args.nb_classes)
+-
++    '''
+     print(f"Creating model: {args.model}")
+     model = create_model(
+         args.model,
+         pretrained=False,
+-        num_classes=args.nb_classes,
+         drop_rate=args.drop,
+         drop_path_rate=args.drop_path,
+         drop_block_rate=None,
+@@ -284,6 +305,15 @@ def main(args):
+         model.load_state_dict(checkpoint_model, strict=False)
+ 
+     model.to(device)
++    if args.jit:
++        print("running jit fusion path\n")
++        model = torch.jit.script(model)
++
++    if args.channels_last:
++        oob_model = model
++        oob_model = oob_model.to(memory_format=torch.channels_last)
++        model = oob_model
++        print("---- Use channels last format.")
+ 
+     model_ema = None
+     if args.model_ema:
+@@ -315,6 +345,8 @@ def main(args):
+         criterion = SoftTargetCrossEntropy()
+     elif args.smoothing:
+         criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
++    elif args.ipex:
++        criterion = torch.nn.CrossEntropyLoss().to(device = ipex.DEVICE)
+     else:
+         criterion = torch.nn.CrossEntropyLoss()
+ 
+@@ -361,8 +393,8 @@ def main(args):
+                 loss_scaler.load_state_dict(checkpoint['scaler'])
+ 
+     if args.eval:
+-        test_stats = evaluate(data_loader_val, model, device)
+-        print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
++        test_stats = evaluate(data_loader_val, model, device, args)
++        # print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+         return
+ 
+     print(f"Start training for {args.epochs} epochs")

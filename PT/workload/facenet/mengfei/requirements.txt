@@ -1,0 +1,3 @@
+opencv-python
+tqdm
+Pillow==8.2.0

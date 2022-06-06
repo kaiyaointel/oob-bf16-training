@@ -1,0 +1,7 @@
+numpy
+matplotlib
+tensorboard
+terminaltables
+pillow==8.2.0
+tqdm
+imgaug

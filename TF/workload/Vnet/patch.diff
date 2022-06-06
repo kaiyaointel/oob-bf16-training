@@ -1,0 +1,39 @@
+diff --git a/train.py b/train.py
+new file mode 100644
+index 0000000..9067d71
+--- /dev/null
++++ b/train.py
+@@ -0,0 +1,33 @@
++import tensorflow as tf
++from tensorflow.python.framework import graph_util
++from VNet import VNet
++import numpy as np
++from Layers import convolution, down_convolution, up_convolution, get_num_channels
++
++
++input_channels = 6
++num_classes = 1
++
++x= tf.placeholder(dtype=tf.float32, shape=(1, 190, 190, 20, input_channels),name="input")
++y= tf.placeholder(dtype=tf.float32, shape=(1, 190, 190, 20, num_classes),name="output")
++train_x=np.random.randn(1,190,190,20,6)
++train_y= np.ones([1,190,190,20,1])
++
++model = VNet(num_classes=num_classes, keep_prob=.7)
++logits = model.network_fn(x, is_training=False)
++
++flat_logits = tf.reshape(logits, [-1, num_classes])
++flat_labels = tf.reshape(y, [-1,num_classes])
++loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=flat_logits,labels=flat_labels))
++learning_rate_node = tf.Variable(0.001, name="learning_rate")
++optimizer = tf.train.AdamOptimizer(learning_rate_node).minimize(loss)
++with tf.Session() as sess:
++    init = tf.global_variables_initializer()
++    sess.run(init)
++    for i in range(1):
++        _,loss_value=sess.run([optimizer,loss],feed_dict={x: train_x,y:train_y})
++    constant_graph = graph_util.convert_variables_to_constants(sess, sess.graph_def, ['vnet/output_layer/add'])
++    with tf.gfile.FastGFile('./model/vnet.pb', mode='wb') as f:
++         f.write(constant_graph.SerializeToString())    
++    # saver = tf.train.Saver()
++    # saver.save(sess,'/home/jialew/tensorflow_enable/VNet/VNet-Tensorflow/model/vnet')

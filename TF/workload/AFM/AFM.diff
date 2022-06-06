@@ -1,0 +1,78 @@
+diff --git a/code/AFM.py b/code/AFM.py
+index 481d499..86e140b 100644
+--- a/code/AFM.py
++++ b/code/AFM.py
+@@ -32,7 +32,7 @@ def parse_args():
+                         help='Choose a dataset.')
+     parser.add_argument('--valid_dimen', type=int, default=3,
+                         help='Valid dimension of the dataset. (e.g. frappe=10, ml-tag=3)')
+-    parser.add_argument('--epoch', type=int, default=20,
++    parser.add_argument('--epoch', type=int, default=2,
+                         help='Number of epochs.')
+     parser.add_argument('--pretrain', type=int, default=-1,
+                         help='flag for pretrain. 1: initialize from pretrain; 0: randomly initialize; -1: save to pretrain file; 2: initialize from pretrain and save to pretrain file')
+@@ -123,7 +123,7 @@ class AFM(BaseEstimator, TransformerMixin):
+             self.element_wise_product = tf.transpose(self.element_wise_product, perm=[1,0,2], name="element_wise_product") # None * (M'*(M'-1)) * K
+             self.interactions = tf.reduce_sum(self.element_wise_product, 2, name="interactions")
+             # _________ MLP Layer / attention part _____________
+-            num_interactions = self.valid_dimension*(self.valid_dimension-1)/2
++            num_interactions = int(self.valid_dimension*(self.valid_dimension-1)/2)
+             if self.attention:
+                 self.attention_mul = tf.reshape(tf.matmul(tf.reshape(self.element_wise_product, shape=[-1, self.hidden_factor[1]]), \
+                     self.weights['attention_W']), shape=[-1, num_interactions, self.hidden_factor[0]])
+@@ -187,7 +187,8 @@ class AFM(BaseEstimator, TransformerMixin):
+                     variable_parameters *= dim.value
+                 total_parameters += variable_parameters
+             if self.verbose > 0:
+-                print "#params: %d" %total_parameters 
++                # print "#params: %d" %total_parameters 
++                print("#params: %d"%total_parameters)
+     
+     def _init_session(self):
+         # adaptively growing video memory
+@@ -302,11 +303,11 @@ class AFM(BaseEstimator, TransformerMixin):
+             init_valid = self.evaluate(Validation_data)
+             print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
+ 
+-        for epoch in xrange(self.epoch):
++        for epoch in range(self.epoch):
+             t1 = time()
+             self.shuffle_in_unison_scary(Train_data['X'], Train_data['Y'])
+             total_batch = int(len(Train_data['Y']) / self.batch_size)
+-            for i in xrange(total_batch):
++            for i in range(total_batch):
+                 # generate a batch
+                 batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
+                 # Fit training
+@@ -329,7 +330,8 @@ class AFM(BaseEstimator, TransformerMixin):
+                 break
+ 
+         if self.pretrain_flag < 0 or self.pretrain_flag == 2:
+-            print "Save model to file as pretrain."
++            # print "Save model to file as pretrain."
++            print("Save model to file as pretrain.")
+             self.saver.save(self.sess, self.save_file)
+ 
+     def eva_termination(self, valid):
+diff --git a/code/LoadData.py b/code/LoadData.py
+index 8e4bde8..4b6866d 100644
+--- a/code/LoadData.py
++++ b/code/LoadData.py
+@@ -107,13 +107,13 @@ class LoadData(object):
+         Make sure each feature vector is of the same length
+         """
+         num_variable = len(self.Train_data['X'][0])
+-        for i in xrange(len(self.Train_data['X'])):
++        for i in range(len(self.Train_data['X'])):
+             num_variable = min([num_variable, len(self.Train_data['X'][i])])
+         # truncate train, validation and test
+-        for i in xrange(len(self.Train_data['X'])):
++        for i in range(len(self.Train_data['X'])):
+             self.Train_data['X'][i] = self.Train_data['X'][i][0:num_variable]
+-        for i in xrange(len(self.Validation_data['X'])):
++        for i in range(len(self.Validation_data['X'])):
+             self.Validation_data['X'][i] = self.Validation_data['X'][i][0:num_variable]
+-        for i in xrange(len(self.Test_data['X'])):
++        for i in range(len(self.Test_data['X'])):
+             self.Test_data['X'][i] = self.Test_data['X'][i][0:num_variable]
+         return num_variable

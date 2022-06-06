@@ -1,0 +1,36 @@
+diff --git a/reformer_pytorch/generative_tools.py b/reformer_pytorch/generative_tools.py
+index 58e9c92..28a90ad 100644
+--- a/reformer_pytorch/generative_tools.py
++++ b/reformer_pytorch/generative_tools.py
+@@ -88,7 +88,6 @@ class TrainingWrapper(nn.Module):
+         else:
+             xi = pad(list(map(lambda t: t[:-1], x)))
+             xo = pad(list(map(lambda t: t[1:], x)))
+-
+         out = self.net(xi, **kwargs)
+ 
+         loss = F.cross_entropy(out.transpose(1, 2), xo, ignore_index = self.ignore_index)
+diff --git a/reformer_pytorch/reformer_pytorch.py b/reformer_pytorch/reformer_pytorch.py
+index 4b7dd32..9d486d3 100644
+--- a/reformer_pytorch/reformer_pytorch.py
++++ b/reformer_pytorch/reformer_pytorch.py
+@@ -748,11 +748,12 @@ class ReformerLM(nn.Module):
+         )
+ 
+     def forward(self, x, **kwargs):
+-        x = self.token_emb(x)
+-        x = x + self.pos_emb(x)
+-
+-        layer_pos_emb = self.layer_pos_emb(x)
+-        x = self.to_model_dim(x)
+-        x = self.reformer(x, pos_emb = layer_pos_emb, **kwargs)
+-        x = self.norm(x)
++        with torch.cuda.amp.autocast(enabled=True):
++            x = self.token_emb(x)
++            x = x + self.pos_emb(x)
++
++            layer_pos_emb = self.layer_pos_emb(x)
++            x = self.to_model_dim(x)
++            x = self.reformer(x, pos_emb = layer_pos_emb, **kwargs)
++            x = self.norm(x)
+         return self.out(x)

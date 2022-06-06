@@ -1,0 +1,5 @@
+Pillow
+gym
+gym-retro
+atari_py
+opencv-python

@@ -1,0 +1,398 @@
+diff --git a/research/deep_speech/data/download.py b/research/deep_speech/data/download.py
+index 2044daf..1f5f17b 100644
+--- a/research/deep_speech/data/download.py
++++ b/research/deep_speech/data/download.py
+@@ -51,7 +51,7 @@ LIBRI_SPEECH_URLS = {
+ }
+ 
+ 
+-def download_and_extract(directory, url):
++def download_and_extract(directory, dataset):
+   """Download and extract the given split of dataset.
+ 
+   Args:
+@@ -61,26 +61,31 @@ def download_and_extract(directory, url):
+ 
+   if not tf.io.gfile.exists(directory):
+     tf.io.gfile.makedirs(directory)
+-
+-  _, tar_filepath = tempfile.mkstemp(suffix=".tar.gz")
+-
+-  try:
+-    tf.compat.v1.logging.info("Downloading %s to %s" % (url, tar_filepath))
+-
+-    def _progress(count, block_size, total_size):
+-      sys.stdout.write("\r>> Downloading {} {:.1f}%".format(
+-          tar_filepath, 100.0 * count * block_size / total_size))
+-      sys.stdout.flush()
+-
+-    urllib.request.urlretrieve(url, tar_filepath, _progress)
+-    print()
+-    statinfo = os.stat(tar_filepath)
+-    tf.compat.v1.logging.info(
+-        "Successfully downloaded %s, size(bytes): %d" % (url, statinfo.st_size))
+-    with tarfile.open(tar_filepath, "r") as tar:
+-      tar.extractall(directory)
+-  finally:
+-    tf.io.gfile.remove(tar_filepath)
++  tar_dir = '/home/chaofanl/workspace/models/research/deep_speech/dataset/da'
++  tar_name = dataset + ".tar.gz"
++  tar_filepath = os.path.join(tar_dir,tar_name)
++  print('***********tar files is*********** : ',tar_filepath)
++  print('###########extracted directory is ########### : ',directory)
++  
++  # _, tar_filepath = tempfile.mkstemp(suffix=".tar.gz")
++
++  # try:
++  #   tf.compat.v1.logging.info("Downloading %s to %s" % (url, tar_filepath))
++
++  #   def _progress(count, block_size, total_size):
++  #     sys.stdout.write("\r>> Downloading {} {:.1f}%".format(
++  #         tar_filepath, 100.0 * count * block_size / total_size))
++  #     sys.stdout.flush()
++
++  #   urllib.request.urlretrieve(url, tar_filepath, _progress)
++  #   print()
++  #   statinfo = os.stat(tar_filepath)
++  #   tf.compat.v1.logging.info(
++  #       "Successfully downloaded %s, size(bytes): %d" % (url, statinfo.st_size))
++  with tarfile.open(tar_filepath, "r") as tar:
++    tar.extractall(directory)
++  # finally:
++  #   tf.io.gfile.remove(tar_filepath)
+ 
+ 
+ def convert_audio_and_split_transcript(input_dir, source_name, target_name,
+@@ -165,7 +170,8 @@ def download_and_process_datasets(directory, datasets):
+   for dataset in datasets:
+     tf.compat.v1.logging.info("Preparing dataset %s", dataset)
+     dataset_dir = os.path.join(directory, dataset)
+-    download_and_extract(dataset_dir, LIBRI_SPEECH_URLS[dataset])
++    # download_and_extract(dataset_dir, LIBRI_SPEECH_URLS[dataset])
++    download_and_extract(dataset_dir, dataset)
+     convert_audio_and_split_transcript(
+         dataset_dir + "/LibriSpeech", dataset, dataset + "-wav",
+         dataset_dir + "/LibriSpeech", dataset + ".csv")
+@@ -174,7 +180,8 @@ def download_and_process_datasets(directory, datasets):
+ def define_data_download_flags():
+   """Define flags for data downloading."""
+   absl_flags.DEFINE_string(
+-      "data_dir", "/tmp/librispeech_data",
++      #"data_dir", "/tmp/librispeech_data",
++      "data_dir", "/home/chaofanl/workspace/models/research/deep_speech/dataset",
+       "Directory to download data and extract the tarball")
+   absl_flags.DEFINE_bool("train_only", False,
+                          "If true, only download the training set")
+diff --git a/research/deep_speech/deep_speech.py b/research/deep_speech/deep_speech.py
+index df14be3..d37ee66 100644
+--- a/research/deep_speech/deep_speech.py
++++ b/research/deep_speech/deep_speech.py
+@@ -31,6 +31,9 @@ from official.utils.flags import core as flags_core
+ from official.utils.misc import distribution_utils
+ from official.utils.misc import model_helpers
+ 
++from tensorflow.core.protobuf import rewriter_config_pb2
++import time
++
+ # Default vocabulary file
+ _VOCABULARY_FILE = os.path.join(
+     os.path.dirname(__file__), "data/vocabulary.txt")
+@@ -83,18 +86,22 @@ def evaluate_model(estimator, speech_labels, entries, input_fn_eval):
+   Returns:
+     Evaluation result containing 'wer' and 'cer' as two metrics.
+   """
++  total_time =0.0
++  count = 0
+   # Get predictions
+   predictions = estimator.predict(input_fn=input_fn_eval)
+ 
+   # Get probabilities of each predicted class
+   probs = [pred["probabilities"] for pred in predictions]
+-
++  
+   num_of_examples = len(probs)
+   targets = [entry[2] for entry in entries]  # The ground truth transcript
+ 
+   total_wer, total_cer = 0, 0
+   greedy_decoder = decoder.DeepSpeechDecoder(speech_labels)
+   for i in range(num_of_examples):
++    start = time.time()
++
+     # Decode string.
+     decoded_str = greedy_decoder.decode(probs[i])
+     # Compute CER.
+@@ -103,7 +110,13 @@ def evaluate_model(estimator, speech_labels, entries, input_fn_eval):
+     # Compute WER.
+     total_wer += greedy_decoder.wer(decoded_str, targets[i]) / float(
+         len(targets[i].split()))
+-
++    end = time.time()
++    delta = end - start
++    total_time += delta
++    count += 1
++  avg_time = total_time/count
++  throughput = 1.0/avg_time * 1
++  print("**********Throughput: {:.2f} example/s************".format(throughput))
+   # Get mean value
+   total_cer /= num_of_examples
+   total_wer /= num_of_examples
+@@ -156,7 +169,7 @@ def model_fn(features, labels, mode, params):
+         predictions=predictions)
+ 
+   # In training mode.
+-  logits = model(features, training=True)
++  logits = model(features, training=False)
+   ctc_input_length = compute_length_after_conv(
+       tf.shape(features)[1], tf.shape(logits)[1], input_length)
+   # Compute CTC loss
+@@ -233,10 +246,18 @@ def run_deep_speech(_):
+   num_classes = len(train_speech_dataset.speech_labels)
+ 
+   # Use distribution strategy for multi-gpu training
+-  num_gpus = flags_core.get_num_gpus(flags_obj)
+-  distribution_strategy = distribution_utils.get_distribution_strategy(num_gpus=num_gpus)
+-  run_config = tf.estimator.RunConfig(
+-      train_distribute=distribution_strategy)
++  # num_gpus = flags_core.get_num_gpus(flags_obj)
++  # distribution_strategy = distribution_utils.get_distribution_strategy(num_gpus=num_gpus)
++  # run_config = tf.estimator.RunConfig(
++  #     train_distribute=distribution_strategy)
++
++  session_config = tf.ConfigProto()
++  off = rewriter_config_pb2.RewriterConfig.OFF
++  # session_config.graph_options.rewrite_options.arithmetic_optimization = off
++  session_config.graph_options.rewrite_options.memory_optimization = off
++  run_config = tf.estimator.RunConfig(session_config=session_config)
++    
++  # run_config = tf.estimator.RunConfig()
+ 
+   estimator = tf.estimator.Estimator(
+       model_fn=model_fn,
+@@ -258,9 +279,11 @@ def run_deep_speech(_):
+       "use_bias": flags_obj.use_bias
+   }
+ 
+-  per_replica_batch_size = per_device_batch_size(flags_obj.batch_size, num_gpus)
++  # per_replica_batch_size = per_device_batch_size(flags_obj.batch_size, num_gpus)
++  per_replica_batch_size = 64
+ 
+   def input_fn_train():
++    # return dataset.input_fn(batch_size,train_speech_dataset)
+     return dataset.input_fn(
+         per_replica_batch_size, train_speech_dataset)
+ 
+@@ -273,17 +296,14 @@ def run_deep_speech(_):
+   for cycle_index in range(total_training_cycle):
+     tf.compat.v1.logging.info("Starting a training cycle: %d/%d",
+                     cycle_index + 1, total_training_cycle)
+-
++    
+     # Perform batch_wise dataset shuffling
+     train_speech_dataset.entries = dataset.batch_wise_dataset_shuffle(
+         train_speech_dataset.entries, cycle_index, flags_obj.sortagrad,
+         flags_obj.batch_size)
+-
+-    estimator.train(input_fn=input_fn_train)
+-
++    estimator.train(input_fn=input_fn_train,steps=100)
+     # Evaluation
+     tf.compat.v1.logging.info("Starting to evaluate...")
+-
+     eval_results = evaluate_model(
+         estimator, eval_speech_dataset.speech_labels,
+         eval_speech_dataset.entries, input_fn_eval)
+@@ -308,7 +328,7 @@ def define_deep_speech_flags():
+       export_dir=True,
+       train_epochs=True,
+       hooks=True,
+-      num_gpu=True,
++      num_gpu=False,
+       epochs_between_evals=True
+   )
+   flags_core.define_performance(
+@@ -316,17 +336,16 @@ def define_deep_speech_flags():
+       inter_op=False,
+       intra_op=False,
+       synthetic_data=False,
+-      max_train_steps=False,
+-      dtype=False
+-  )
++      max_train_steps=200,
++      dtype=False )
+   flags_core.define_benchmark()
+   flags.adopt_module_key_flags(flags_core)
+ 
+   flags_core.set_defaults(
+-      model_dir="/tmp/deep_speech_model/",
+-      export_dir="/tmp/deep_speech_saved_model/",
+-      train_epochs=10,
+-      batch_size=128,
++      model_dir="/tmp/deep_speech3/",
++      export_dir="/tmp/deep_speech_model/deep",
++      train_epochs=1,
++      batch_size=64,
+       hooks="")
+ 
+   # Deep speech flags
+diff --git a/research/deep_speech/deep_speech_model.py b/research/deep_speech/deep_speech_model.py
+index 7860f37..8e92cad 100644
+--- a/research/deep_speech/deep_speech_model.py
++++ b/research/deep_speech/deep_speech_model.py
+@@ -37,7 +37,6 @@ _CONV_FILTERS = 32
+ 
+ def batch_norm(inputs, training):
+   """Batch normalization layer.
+-
+   Note that the momentum to use will affect validation accuracy over time.
+   Batch norm has different behaviors during training/evaluation. With a large
+   momentum, the model takes longer to get a near-accurate estimation of the
+@@ -45,11 +44,9 @@ def batch_norm(inputs, training):
+   more iterations to see good evaluation results. If the training data is evenly
+   distributed over the feature space, we can also try setting a smaller momentum
+   (such as 0.1) to get good evaluation result sooner.
+-
+   Args:
+     inputs: input data for batch norm layer.
+     training: a boolean to indicate if it is in training stage.
+-
+   Returns:
+     tensor output from batch norm layer.
+   """
+@@ -60,7 +57,6 @@ def batch_norm(inputs, training):
+ def _conv_bn_layer(inputs, padding, filters, kernel_size, strides, layer_id,
+                    training):
+   """Defines 2D convolutional + batch normalization layer.
+-
+   Args:
+     inputs: input data for convolution layer.
+     padding: padding to be applied before convolution layer.
+@@ -70,7 +66,6 @@ def _conv_bn_layer(inputs, padding, filters, kernel_size, strides, layer_id,
+     strides: a tuple specifying the stride length of the convolution.
+     layer_id: an integer specifying the layer index.
+     training: a boolean to indicate which stage we are in (training/eval).
+-
+   Returns:
+     tensor output from the current layer.
+   """
+@@ -90,7 +85,6 @@ def _conv_bn_layer(inputs, padding, filters, kernel_size, strides, layer_id,
+ def _rnn_layer(inputs, rnn_cell, rnn_hidden_size, layer_id, is_batch_norm,
+                is_bidirectional, training):
+   """Defines a batch normalization + rnn layer.
+-
+   Args:
+     inputs: input tensors for the current layer.
+     rnn_cell: RNN cell instance to use.
+@@ -101,7 +95,6 @@ def _rnn_layer(inputs, rnn_cell, rnn_hidden_size, layer_id, is_batch_norm,
+     is_bidirectional: a boolean specifying whether the rnn layer is
+       bi-directional.
+     training: a boolean to indicate which stage we are in (training/eval).
+-
+   Returns:
+     tensor output for the current layer.
+   """
+@@ -124,7 +117,6 @@ class DeepSpeech2(object):
+   def __init__(self, num_rnn_layers, rnn_type, is_bidirectional,
+                rnn_hidden_size, num_classes, use_bias):
+     """Initialize DeepSpeech2 model.
+-
+     Args:
+       num_rnn_layers: an integer, the number of rnn layers. By default, it's 5.
+       rnn_type: a string, one of the supported rnn cells: gru, rnn and lstm.
+@@ -174,4 +166,3 @@ class DeepSpeech2(object):
+         self.num_classes, use_bias=self.use_bias, activation="softmax")(inputs)
+ 
+     return logits
+-
+diff --git a/research/deep_speech/run_deep_speech.sh b/research/deep_speech/run_deep_speech.sh
+index f1559aa..82db3eb 100755
+--- a/research/deep_speech/run_deep_speech.sh
++++ b/research/deep_speech/run_deep_speech.sh
+@@ -1,50 +1,54 @@
+ #!/bin/bash
+ # Script to run deep speech model to achieve the MLPerf target (WER = 0.23)
+ # Step 1: download the LibriSpeech dataset.
+-echo "Data downloading..."
+-python data/download.py
++# echo "Data downloading..."
++# python data/download.py
+ 
+ ## After data downloading, the dataset directories are:
+-train_clean_100="/tmp/librispeech_data/train-clean-100/LibriSpeech/train-clean-100.csv"
+-train_clean_360="/tmp/librispeech_data/train-clean-360/LibriSpeech/train-clean-360.csv"
+-train_other_500="/tmp/librispeech_data/train-other-500/LibriSpeech/train-other-500.csv"
+-dev_clean="/tmp/librispeech_data/dev-clean/LibriSpeech/dev-clean.csv"
+-dev_other="/tmp/librispeech_data/dev-other/LibriSpeech/dev-other.csv"
+-test_clean="/tmp/librispeech_data/test-clean/LibriSpeech/test-clean.csv"
+-test_other="/tmp/librispeech_data/test-other/LibriSpeech/test-other.csv"
++# train_clean_100="/home/chaofanl/workspace/models/research/deep_speech/dataset/train-clean-100/LibriSpeech/train-clean-100.csv"
++# train_clean_360="/home/chaofanl/workspace/models/research/deep_speech/dataset/train-clean-360/LibriSpeech/train-clean-360.csv"
++# train_other_500="/home/chaofanl/workspace/models/research/deep_speech/dataset/train-other-500/LibriSpeech/train-other-500.csv"
++# dev_clean="/home/chaofanl/workspace/models/research/deep_speech/dataset/dev-clean/LibriSpeech/dev-clean.csv"
++# dev_other="/home/chaofanl/workspace/models/research/deep_speech/dataset/dev-other/LibriSpeech/dev-other.csv"
++# test_clean="/home/chaofanl/workspace/models/research/deep_speech/dataset/test-clean/LibriSpeech/test-clean.csv"
++# test_other="/home/chaofanl/workspace/models/research/deep_speech/dataset/test-other/LibriSpeech/test-other.csv"
+ 
+ # Step 2: generate train dataset and evaluation dataset
+-echo "Data preprocessing..."
+-train_file="/tmp/librispeech_data/train_dataset.csv"
+-eval_file="/tmp/librispeech_data/eval_dataset.csv"
+-
+-head -1 $train_clean_100 > $train_file
+-for filename in $train_clean_100 $train_clean_360 $train_other_500
+-do
+-    sed 1d $filename >> $train_file
+-done
+-
+-head -1 $dev_clean > $eval_file
+-for filename in $dev_clean $dev_other
+-do
+-    sed 1d $filename >> $eval_file
+-done
+-
+-# Step 3: filter out the audio files that exceed max time duration.
+-final_train_file="/tmp/librispeech_data/final_train_dataset.csv"
+-final_eval_file="/tmp/librispeech_data/final_eval_dataset.csv"
+-
+-MAX_AUDIO_LEN=27.0
+-awk -v maxlen="$MAX_AUDIO_LEN" 'BEGIN{FS="\t";} NR==1{print $0} NR>1{cmd="soxi -D "$1""; cmd|getline x; if(x<=maxlen) {print $0}; close(cmd);}' $train_file > $final_train_file
+-awk -v maxlen="$MAX_AUDIO_LEN" 'BEGIN{FS="\t";} NR==1{print $0} NR>1{cmd="soxi -D "$1""; cmd|getline x; if(x<=maxlen) {print $0}; close(cmd);}' $eval_file > $final_eval_file
++# echo "Data preprocessing..."
++# train_file="/home/chaofanl/workspace/models/research/deep_speech/dataset/train_dataset.csv"
++# eval_file="/home/chaofanl/workspace/models/research/deep_speech/dataset/eval_dataset.csv"
++
++# head -1 $train_clean_100 > $train_file
++# # for filename in $train_clean_100 $train_clean_360 $train_other_500
++# for filename in $train_clean_100 $train_clean_360
++# do
++#     sed 1d $filename >> $train_file
++# done
++
++# head -1 $dev_clean > $eval_file
++# for filename in $dev_clean $dev_other
++# do
++#     sed 1d $filename >> $eval_file
++# done
++
++# # Step 3: filter out the audio files that exceed max time duration.
++# final_train_file="/home/chaofanl/workspace/models/research/deep_speech/dataset/final_train_dataset.csv"
++# final_eval_file="/home/chaofanl/workspace/models/research/deep_speech/dataset/final_eval_dataset.csv"
++
++# MAX_AUDIO_LEN=27.0
++# awk -v maxlen="$MAX_AUDIO_LEN" 'BEGIN{FS="\t";} NR==1{print $0} NR>1{cmd="soxi -D "$1""; cmd|getline x; if(x<=maxlen) {print $0}; close(cmd);}' $train_file > $final_train_file
++# awk -v maxlen="$MAX_AUDIO_LEN" 'BEGIN{FS="\t";} NR==1{print $0} NR>1{cmd="soxi -D "$1""; cmd|getline x; if(x<=maxlen) {print $0}; close(cmd);}' $eval_file > $final_eval_file
+ 
+ # Step 4: run the training and evaluation loop in background, and save the running info to a log file
++final_train_file="./dataset/final_train_dataset.csv"
++final_eval_file="./dataset/final_eval_dataset.csv"
+ echo "Model training and evaluation..."
+ start=`date +%s`
+ 
+ log_file=log_`date +%Y-%m-%d`
+-nohup python deep_speech.py --train_data_dir=$final_train_file --eval_data_dir=$final_eval_file --num_gpus=-1 --wer_threshold=0.23 --seed=1 >$log_file 2>&1&
+-
++# nohup python deep_speech.py --train_data_dir=$final_train_file --eval_data_dir=$final_eval_file --num_gpus=-1 --wer_threshold=0.23 --seed=1 >$log_file 2>&1&
++# python deep_speech.py --train_data_dir=$final_train_file --eval_data_dir=$final_eval_file  --wer_threshold=0.23 --seed=1 #--num_gpus=-1
++python deep_speech.py --train_data_dir=$final_train_file --eval_data_dir=$final_eval_file --seed=1
+ end=`date +%s`
+ runtime=$((end-start))
+ echo "Model training time is" $runtime "seconds."

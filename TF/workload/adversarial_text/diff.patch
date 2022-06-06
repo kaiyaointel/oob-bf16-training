@@ -1,0 +1,37 @@
+diff --git a/research/adversarial_text/evaluate.py b/research/adversarial_text/evaluate.py
+index d7ea8c0..ca981b2 100644
+--- a/research/adversarial_text/evaluate.py
++++ b/research/adversarial_text/evaluate.py
+@@ -42,6 +42,7 @@ flags.DEFINE_string('checkpoint_dir', '/tmp/text_train',
+                     'Directory where to read model checkpoints.')
+ flags.DEFINE_integer('eval_interval_secs', 60, 'How often to run the eval.')
+ flags.DEFINE_integer('num_examples', 32, 'Number of examples to run.')
++flags.DEFINE_integer('warm_up', 10, 'Number of examples to do warm up.')
+ flags.DEFINE_bool('run_once', False, 'Whether to run eval only once.')
+ 
+ 
+@@ -91,14 +92,21 @@ def run_eval(eval_ops, summary_writer, saver):
+     # Run update ops
+     num_batches = int(math.ceil(FLAGS.num_examples / FLAGS.batch_size))
+     tf.logging.info('Running %d batches for evaluation.', num_batches)
++    
+     for i in range(num_batches):
+-      if (i + 1) % 10 == 0:
++      if i == FLAGS.warm_up:
++        tic = time.time()
++      if (i + 1) % 100 == 0:
+         tf.logging.info('Running batch %d/%d...', i + 1, num_batches)
+-      if (i + 1) % 50 == 0:
++      if (i + 1) % 100 == 0:
+         _log_values(sess, value_ops_dict)
+       sess.run(update_ops)
+ 
+-    _log_values(sess, value_ops_dict, summary_writer=summary_writer)
++    toc = time.time()
++    print("batch size: {}".format(FLAGS.batch_size))
++    print("total number: {} ".format(FLAGS.num_examples))
++    print("Throughput: {:.2f} fps".format((FLAGS.num_examples - FLAGS.warm_up) / (toc - tic)))
++    # _log_values(sess, value_ops_dict, summary_writer=summary_writer)
+ 
+ 
+ def _log_values(sess, value_ops, summary_writer=None):

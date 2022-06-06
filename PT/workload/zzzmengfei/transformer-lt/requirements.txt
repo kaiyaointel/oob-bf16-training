@@ -1,0 +1,16 @@
+cffi
+numpy
+regex
+sacrebleu
+pycparser
+pandas 
+tqdm 
+scipy 
+requests 
+gensim 
+imutils 
+opencv-python 
+scikit-learn 
+opencv-contrib-python 
+pytest
+Pillow

@@ -1,0 +1,161 @@
+diff --git a/src/transformers/trainer.py b/src/transformers/trainer.py
+index b8e6e494b..8d25a5793 100755
+--- a/src/transformers/trainer.py
++++ b/src/transformers/trainer.py
+@@ -23,6 +23,7 @@ import shutil
+ import warnings
+ from pathlib import Path
+ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
++import time
+ 
+ import numpy as np
+ import torch
+@@ -1011,7 +1012,11 @@ class Trainer:
+ 
+         Subclass and override for custom behavior.
+         """
+-        outputs = model(**inputs)
++        if self.args.precision == 'bfloat16':
++            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                outputs = model(**inputs)
++        else:
++            outputs = model(**inputs)
+         # Save past state if it exists
+         if self.args.past_index >= 0:
+             self._past = outputs[self.args.past_index]
+@@ -1257,10 +1262,54 @@ class Trainer:
+             self._past = None
+ 
+         self.callback_handler.eval_dataloader = dataloader
++        total_time = 0
++        total_data = 0
++        if self.args.mkldnn:
++            import intel_pytorch_extension as ipex
++            model = model.to(ipex.DEVICE)
++            if self.args.jit:
++                ipex.core.enable_jit_opt()
++                model = torch.jit.script(model)
++        ### To oob
++        elif self.args.channels_last:
++            model_oob = model
++            model_oob = model_oob.to(memory_format=torch.channels_last)
++            model = model_oob
++            print("---- Use channels last format.")
++
++        for index, inputs in enumerate(dataloader):
++            if self.args.num_iters != 0 and index > self.args.num_iters:
++                break
++            if self.args.mkldnn:
++                inputs = {key:value.to(ipex.DEVICE) for key,value in inputs.items()}
++            elif self.args.channels_last:
++                input_oob = inputs
++                try:
++                    input_oob = {key:value.to(memory_format=torch.channels_last) for key,value in input_oob.items()}
++                except:
++                    print("Input NHWC failed! Use normal input.")
++                # transfer to jit model at the first iter
++                if self.args.jit:
++                    try:
++                        model_oob = torch.jit.trace(model_oob.eval(), input_oob)
++                    except:
++                        print("Can't convert to jit model...")
++                inputs = input_oob
++
++            tic = time.time()
++            if self.args.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
++            else:
++                loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
++            toc = time.time()
+ 
+-        for inputs in dataloader:
+-            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
+             batch_size = inputs[list(inputs.keys())[0]].shape[0]
++
++            if index >= self.args.num_warmup_iters:
++                total_time += toc - tic
++                total_data += batch_size
++
+             if loss is not None:
+                 eval_losses.extend([loss] * batch_size)
+             if logits is not None:
+@@ -1268,6 +1317,20 @@ class Trainer:
+             if labels is not None:
+                 label_ids = labels if label_ids is None else nested_concat(label_ids, labels, dim=0)
+             self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
++        #
++        if self.args.profile:
++            import pathlib
++            timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++            if not os.path.exists(timeline_dir):
++                os.makedirs(timeline_dir)
++            timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                        self.args.arch + '-' + str(index + 1) + '-' + str(os.getpid()) + '.json'
++            prof.export_chrome_trace(timeline_file)
++            # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++            # save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++        print(" time cost %s\n total samples %s \n inference latency: %ss\n inference Throughput: %s images/s\n "
++                %(total_time, total_data, total_time /total_data, total_data / total_time))
+ 
+         if self.args.past_index and hasattr(self, "_past"):
+             # Clean the state at the end of the evaluation loop
+@@ -1342,7 +1405,11 @@ class Trainer:
+         inputs = self._prepare_inputs(inputs)
+ 
+         with torch.no_grad():
+-            outputs = model(**inputs)
++            if self.args.precision == 'bfloat16':
++                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                    outputs = model(**inputs)
++            else:
++                outputs = model(**inputs)
+             if has_labels:
+                 # The .mean() is to reduce in case of distributed training
+                 loss = outputs[0].mean().item()
+@@ -1414,3 +1481,24 @@ class Trainer:
+         else:
+             model = model
+         return model
++
++
++    def save_profile_result(filename, table):
++        import xlsxwriter
++        workbook = xlsxwriter.Workbook(filename)
++        worksheet = workbook.add_worksheet()
++        keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++                "CPU time avg", "Number of Calls"]
++        for j in range(len(keys)):
++            worksheet.write(0, j, keys[j])
++
++        lines = table.split("\n")
++        for i in range(3, len(lines)-4):
++            words = lines[i].split(" ")
++            j = 0
++            for word in words:
++                if not word == "":
++                    worksheet.write(i-2, j, word)
++                    j += 1
++        workbook.close()
++
+diff --git a/src/transformers/training_args.py b/src/transformers/training_args.py
+index 9359a9f17..d54715aa5 100644
+--- a/src/transformers/training_args.py
++++ b/src/transformers/training_args.py
+@@ -320,6 +320,15 @@ class TrainingArguments:
+     greater_is_better: Optional[bool] = field(
+         default=None, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
+     )
++    num_warmup_iters: int = field(default=10, metadata={"help": "Warmup steps for evaluation benchmarking."})
++    num_iters: int = field(default=0, metadata={"help": "steps for evaluation benchmarking."})
++    mkldnn: bool = field(default=False, metadata={"help": "Use Intel IPEX."})
++    jit: bool = field(default=False, metadata={"help": "Use jit optimize to do optimization."})
++    channels_last: int = field(default=1, metadata={"help": "Use Pytorch NHWC."})
++    arch: str = field(default=None, metadata={"help": "model name"})
++    profile: bool = field(default=False, metadata={"help": "Trigger profile on current topology."})
++    precision: str = field(default='float32', metadata={"help": "float32, bfloat16."})
++
+ 
+     def __post_init__(self):
+         if self.disable_tqdm is None:

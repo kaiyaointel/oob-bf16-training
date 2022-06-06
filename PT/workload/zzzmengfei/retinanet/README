@@ -1,0 +1,28 @@
+#Deps
+pip install -r requirements.txt
+
+cd ../../retinanet/
+python setup.py install
+pip install -e .
+
+#DATASET:
+    cd ../../retinanet
+    mkdir datasets && datasets
+    mkdir coco
+    cd coco
+    ln -s /lustre/dataset/COCO2017/train2017 train2017
+    ln -s /lustre/dataset/COCO2017/val2017 val2017
+    ln -s /lustre/dataset/COCO2017/test2017 test2017
+    cp -r /lustre/dataset/pytorch-broad-models/RetinaNet/dataset/annotations .
+#Model Weight:
+    use param: `--config-file configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml`
+    you will download weight and find it at `~/.torch/fvcore_cache/detectron2/ImageNetPretrained/MSRA/R-50.pkl`
+
+#Test Prepare
+cd ../../retinanet/
+git apply ../workload/RetinaNet/RetinaNet.patch
+
+#Broad-Product test (enable ipex as default, apply many urgly patch since it doesn't support ipex originally)
+bash ../workload/RetinaNet/run.sh
+
+

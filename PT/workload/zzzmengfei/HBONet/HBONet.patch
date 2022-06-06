@@ -1,0 +1,645 @@
+diff --git a/imagenet.py b/imagenet.py
+index a8c71da..e516199 100644
+--- a/imagenet.py
++++ b/imagenet.py
+@@ -103,11 +103,21 @@ parser.add_argument('--warmup', action='store_true',
+ 
+ parser.add_argument('-c', '--checkpoint', default='checkpoints', type=str, metavar='PATH',
+                     help='path to save checkpoint (default: checkpoints)')
+-
++parser.add_argument('--cuda', action='store_true', default=False, help="Use CUDA")
+ parser.add_argument('--width-mult', type=float, default=1.0, help='MobileNet model width multiplier.')
+ parser.add_argument('--input-size', type=int, default=224, help='MobileNet model input resolution')
+ parser.add_argument('--weight', default='', type=str, metavar='WEIGHT',
+                     help='path to pretrained weight (default: none)')
++parser.add_argument('--dummy', action='store_true', default=False, help="Use dummy data")
++parser.add_argument('--ipex', action='store_true', default=False, help="Use IPEX")
++parser.add_argument('--precision', default='float32', help='Precision, "float32" or "bfloat16"')
++parser.add_argument('--jit', action='store_true', default=False, help="Use jit script model")
++parser.add_argument('--profile', action='store_true', default=False, help="Trigger profile on current topology.")
++parser.add_argument('--max_iters', type=int, default=500, help="max iterations to run")
++parser.add_argument('--warmup_iters', type=int, default=10, help="iterations to warmup")
++parser.add_argument('--HBONet_name', type=str, default='', help="HBOnet name")
++parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++parser.add_argument('--config_file', type=str, default='./conf.yaml', help="Config file for int8 tuning")
+ 
+ 
+ best_prec1 = 0
+@@ -116,11 +126,13 @@ best_prec1 = 0
+ def main():
+     global args, best_prec1
+     args = parser.parse_args()
++    print(args)
+ 
+     if args.seed is not None:
+         random.seed(args.seed)
+         torch.manual_seed(args.seed)
+-        cudnn.deterministic = True
++        if args.cuda:
++            cudnn.deterministic = True
+         warnings.warn('You have chosen to seed training. '
+                       'This will turn on the CUDNN deterministic setting, '
+                       'which can slow down your training considerably! '
+@@ -137,22 +149,46 @@ def main():
+     print("=> creating model '{}'".format(args.arch))
+     model = models.__dict__[args.arch](width_mult=args.width_mult)
+ 
+-    if not args.distributed:
+-        if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+-            model.features = torch.nn.DataParallel(model.features)
+-            model.cuda()
++    if args.ipex:
++        import intel_pytorch_extension as ipex
++        print("Running with IPEX...")
++        if args.precision == "bfloat16":
++            # Automatically mix precision
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print("Running with bfloat16...")
++        model = torch.nn.DataParallel(model).to(ipex.DEVICE)
++        if args.jit:
++            input = torch.randn(args.batch_size, 3, 224, 224).to(ipex.DEVICE)
++            model = torch.jit.trace(model, input)
++        args.device = ipex.DEVICE
++    elif args.cuda:
++        if not args.distributed:
++            if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
++                model.features = torch.nn.DataParallel(model.features)
++                model.cuda()
++            else:
++                model = torch.nn.DataParallel(model).cuda()
+         else:
+-            model = torch.nn.DataParallel(model).cuda()
++            model.cuda()
++            model = torch.nn.parallel.DistributedDataParallel(model)
++        args.device = torch.device('cuda')
++    elif args.channels_last:
++        # model = torch.nn.DataParallel(model)
++        model_oob = model
++        model_oob = model_oob.to(memory_format=torch.channels_last)
++        model = model_oob
++        args.device = torch.device('cpu')
+     else:
+-        model.cuda()
+-        model = torch.nn.parallel.DistributedDataParallel(model)
++        #  model = torch.nn.DataParallel(model)
++         args.device = torch.device('cpu')
+ 
+     # define loss function (criterion) and optimizer
+-    criterion = nn.CrossEntropyLoss().cuda()
++    criterion = nn.CrossEntropyLoss().cuda() if args.cuda else nn.CrossEntropyLoss()
+ 
+-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+-                                momentum=args.momentum,
+-                                weight_decay=args.weight_decay)
++    if not args.evaluate:
++        optimizer = torch.optim.SGD(model.parameters(), args.lr,
++                                    momentum=args.momentum,
++                                    weight_decay=args.weight_decay)
+ 
+     # optionally resume from a checkpoint
+     title = 'ImageNet-' + args.arch
+@@ -177,38 +213,51 @@ def main():
+         logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+         logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+ 
++    if args.cuda:
++        cudnn.benchmark = True
+ 
+-    cudnn.benchmark = True
+-
++    if not args.dummy:
+     # Data loading code
+-    if args.data_backend == 'pytorch':
+-        get_train_loader = get_pytorch_train_loader
+-        get_val_loader = get_pytorch_val_loader
+-    elif args.data_backend == 'dali-gpu':
+-        get_train_loader = get_dali_train_loader(dali_cpu=False)
+-        get_val_loader = get_dali_val_loader()
+-    elif args.data_backend == 'dali-cpu':
+-        get_train_loader = get_dali_train_loader(dali_cpu=True)
+-        get_val_loader = get_dali_val_loader()
+-
+-    train_loader, train_loader_len = get_train_loader(args.data, args.batch_size, workers=args.workers, input_size=args.input_size)
+-    val_loader, val_loader_len = get_val_loader(args.data, args.batch_size, workers=args.workers, input_size=args.input_size)
++        if args.data_backend == 'pytorch':
++            get_train_loader = get_pytorch_train_loader
++            get_val_loader = get_pytorch_val_loader
++        elif args.data_backend == 'dali-gpu':
++            get_train_loader = get_dali_train_loader(dali_cpu=False)
++            get_val_loader = get_dali_val_loader()
++        elif args.data_backend == 'dali-cpu':
++            get_train_loader = get_dali_train_loader(dali_cpu=True)
++            get_val_loader = get_dali_val_loader()
++
++        train_loader, train_loader_len = get_train_loader(args.data, args.batch_size, workers=args.workers, input_size=args.input_size)
++        val_loader, val_loader_len = get_val_loader(args.data, args.batch_size, workers=args.workers, input_size=args.input_size)
++    else:
++        val_loader = None
++        val_loader_len = None
+ 
+     if args.evaluate:
+         from collections import OrderedDict
+         if os.path.isfile(args.weight):
+             print("=> loading pretrained weight '{}'".format(args.weight))
+-            source_state = torch.load(args.weight)
++            source_state = torch.load(args.weight, map_location=torch.device('cpu') )
+             target_state = OrderedDict()
+             for k, v in source_state.items():
+-                if k[:7] != 'module.':
+-                    k = 'module.' + k
++                # if k[:7] != 'module.':
++                #     k = 'module.' + k
+                 target_state[k] = v
+             model.load_state_dict(target_state)
+         else:
+             print("=> no weight found at '{}'".format(args.weight))
+ 
+-        validate(val_loader, val_loader_len, model, criterion)
++        if args.precision == 'int8':
++            from lpot.experimental import Quantization, common
++            quantizer = Quantization(args.config_file)
++            dataset = quantizer.dataset('dummy', (args.batch_size, 3, args.input_size, args.input_size), label=True)
++            quantizer.calib_dataloader = common.DataLoader(dataset)
++            quantizer.model = common.Model(model)
++            q_model = quantizer()
++            model = q_model.model  
++
++        validate(val_loader, val_loader_len, model, criterion, args)
+         return
+ 
+     # visualization
+@@ -312,8 +361,9 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, epoch):
+     return (losses.avg, top1.avg)
+ 
+ 
+-def validate(val_loader, val_loader_len, model, criterion):
+-    bar = Bar('Processing', max=val_loader_len)
++def validate(val_loader, val_loader_len, model, criterion, args=None):
++    bar = Bar('Processing',
++        max=val_loader_len if (val_loader_len is not None) else args.max_iters + args.warmup_iters)
+ 
+     batch_time = AverageMeter()
+     data_time = AverageMeter()
+@@ -324,42 +374,98 @@ def validate(val_loader, val_loader_len, model, criterion):
+     # switch to evaluate mode
+     model.eval()
+ 
+-    end = time.time()
+-    for i, (input, target) in enumerate(val_loader):
+-        # measure data loading time
+-        data_time.update(time.time() - end)
+-
+-        target = target.cuda(non_blocking=True)
+-
+-        with torch.no_grad():
+-            # compute output
+-            output = model(input)
+-            loss = criterion(output, target)
+-
+-        # measure accuracy and record loss
+-        prec1, prec5 = accuracy(output, target, topk=(1, 5))
+-        losses.update(loss.item(), input.size(0))
+-        top1.update(prec1.item(), input.size(0))
+-        top5.update(prec5.item(), input.size(0))
+-
+-        # measure elapsed time
+-        batch_time.update(time.time() - end)
++    if args.dummy:
++        if args.channels_last:
++            input = torch.randn(args.batch_size, 3 , 224, 224)
++            input_oob = input
++            input_oob = input_oob.to(memory_format=torch.channels_last)
++            input = input_oob
++        else:
++            input = torch.randn(args.batch_size, 3 , 224, 224).to(args.device)
++        for i in range(args.max_iters):
++            if i >= args.warmup_iters:
++                start = time.time()
++            with torch.no_grad():
++                if args.profile:
++                     with torch.profiler.profile(activities = [torch.profiler.ProfilerActivity.CPU]) as prof:
++                        if args.precision == "bfloat16":
++                            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                                output = model(input)
++                        else:
++                            output = model(input)
++                else:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            output = model(input)
++                    else:
++                        output = model(input)
++
++                #output = model(input)
++            # measure elapsed time
++            if i >= args.warmup_iters:
++                batch_time.update(time.time() - start)
++            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:}'.format(
++                        batch=i + 1,
++                        size=args.max_iters + args.warmup_iters,
++                        data=data_time.avg,
++                        bt=batch_time.avg,
++                        total=bar.elapsed_td,
++                        eta=bar.eta_td,
++                        )
++            bar.next()
++    else:
+         end = time.time()
+-
+-        # plot progress
+-        bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+-                    batch=i + 1,
+-                    size=val_loader_len,
+-                    data=data_time.avg,
+-                    bt=batch_time.avg,
+-                    total=bar.elapsed_td,
+-                    eta=bar.eta_td,
+-                    loss=losses.avg,
+-                    top1=top1.avg,
+-                    top5=top5.avg,
+-                    )
+-        bar.next()
++        for i, (input, target) in enumerate(val_loader):
++            # measure data loading time
++            data_time.update(time.time() - end)
++
++            target = target.cuda(non_blocking=True)
++
++            with torch.no_grad():
++                # compute output
++                output = model(input)
++                loss = criterion(output, target)
++
++            # measure accuracy and record loss
++            prec1, prec5 = accuracy(output, target, topk=(1, 5))
++            losses.update(loss.item(), input.size(0))
++            top1.update(prec1.item(), input.size(0))
++            top5.update(prec5.item(), input.size(0))
++
++            # measure elapsed time
++            batch_time.update(time.time() - end)
++            end = time.time()
++
++            # plot progress
++            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
++                        batch=i + 1,
++                        size=val_loader_len,
++                        data=data_time.avg,
++                        bt=batch_time.avg,
++                        total=bar.elapsed_td,
++                        eta=bar.eta_td,
++                        loss=losses.avg,
++                        top1=top1.avg,
++                        top5=top5.avg,
++                        )
++            bar.next()
+     bar.finish()
++    latency = batch_time.avg / args.batch_size * 1000
++    perf = args.batch_size/batch_time.avg
++    print('inference latency: %3.3f ms'%latency)
++    print('inference Throughput: %3.3f fps'%perf)
++
++    if args.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    args.arch + str(i + 1) + '-' + str(os.getpid()) + '.json'
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # save_profile_result(torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
+     return (losses.avg, top1.avg)
+ 
+ 
+@@ -397,6 +503,24 @@ def adjust_learning_rate(optimizer, epoch, iteration, num_iter):
+ 
+     for param_group in optimizer.param_groups:
+         param_group['lr'] = lr
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/utils/dataloaders.py b/utils/dataloaders.py
+index c6e450b..de2826a 100644
+--- a/utils/dataloaders.py
++++ b/utils/dataloaders.py
+@@ -12,153 +12,156 @@ try:
+     import nvidia.dali.types as types
+     DATA_BACKEND_CHOICES.append('dali-gpu')
+     DATA_BACKEND_CHOICES.append('dali-cpu')
++    USE_CUDA = True
+ except ImportError:
+     print("Please install DALI from https://www.github.com/NVIDIA/DALI to run this example.")
++    USE_CUDA =False
+ 
+ 
+-class HybridTrainPipe(Pipeline):
+-    def __init__(self, batch_size, num_threads, device_id, data_dir, crop, dali_cpu=False):
+-        super(HybridTrainPipe, self).__init__(batch_size, num_threads, device_id, seed = 12 + device_id)
+-        if torch.distributed.is_initialized():
+-            local_rank = torch.distributed.get_rank()
+-            world_size = torch.distributed.get_world_size()
+-        else:
+-            local_rank = 0
+-            world_size = 1
+-
+-        self.input = ops.FileReader(
+-                file_root = data_dir,
+-                shard_id = local_rank,
+-                num_shards = world_size,
+-                random_shuffle = True)
+-
+-        if dali_cpu:
+-            dali_device = "cpu"
+-            self.decode = ops.HostDecoderRandomCrop(device=dali_device, output_type=types.RGB,
+-                                                    random_aspect_ratio=[0.75, 4./3.],
+-                                                    random_area=[0.08, 1.0],
+-                                                    num_attempts=100)
+-        else:
+-            dali_device = "gpu"
+-            # This padding sets the size of the internal nvJPEG buffers to be able to handle all images from full-sized ImageNet
+-            # without additional reallocations
+-            self.decode = ops.nvJPEGDecoderRandomCrop(device="mixed", output_type=types.RGB, device_memory_padding=211025920, host_memory_padding=140544512,
+-                                                      random_aspect_ratio=[0.75, 4./3.],
+-                                                      random_area=[0.08, 1.0],
+-                                                      num_attempts=100)
+-
+-        self.res = ops.Resize(device=dali_device, resize_x=crop, resize_y=crop, interp_type=types.INTERP_TRIANGULAR)
+-        self.cmnp = ops.CropMirrorNormalize(device = "gpu",
+-                                            output_dtype = types.FLOAT,
+-                                            output_layout = types.NCHW,
+-                                            crop = (crop, crop),
+-                                            image_type = types.RGB,
+-                                            mean = [0.485 * 255,0.456 * 255,0.406 * 255],
+-                                            std = [0.229 * 255,0.224 * 255,0.225 * 255])
+-        self.coin = ops.CoinFlip(probability = 0.5)
+-
+-    def define_graph(self):
+-        rng = self.coin()
+-        self.jpegs, self.labels = self.input(name = "Reader")
+-        images = self.decode(self.jpegs)
+-        images = self.res(images)
+-        output = self.cmnp(images.gpu(), mirror = rng)
+-        return [output, self.labels]
+-
+-
+-class HybridValPipe(Pipeline):
+-    def __init__(self, batch_size, num_threads, device_id, data_dir, crop, size):
+-        super(HybridValPipe, self).__init__(batch_size, num_threads, device_id, seed = 12 + device_id)
+-        if torch.distributed.is_initialized():
+-            local_rank = torch.distributed.get_rank()
+-            world_size = torch.distributed.get_world_size()
+-        else:
+-            local_rank = 0
+-            world_size = 1
+-
+-        self.input = ops.FileReader(
+-                file_root = data_dir,
+-                shard_id = local_rank,
+-                num_shards = world_size,
+-                random_shuffle = False)
+-
+-        self.decode = ops.nvJPEGDecoder(device = "mixed", output_type = types.RGB)
+-        self.res = ops.Resize(device = "gpu", resize_shorter = size)
+-        self.cmnp = ops.CropMirrorNormalize(device = "gpu",
+-                output_dtype = types.FLOAT,
+-                output_layout = types.NCHW,
+-                crop = (crop, crop),
+-                image_type = types.RGB,
+-                mean = [0.485 * 255,0.456 * 255,0.406 * 255],
+-                std = [0.229 * 255,0.224 * 255,0.225 * 255])
+-
+-    def define_graph(self):
+-        self.jpegs, self.labels = self.input(name = "Reader")
+-        images = self.decode(self.jpegs)
+-        images = self.res(images)
+-        output = self.cmnp(images)
+-        return [output, self.labels]
+-
+-
+-class DALIWrapper(object):
+-    def gen_wrapper(dalipipeline):
+-        for data in dalipipeline:
+-            input = data[0]["data"]
+-            target = data[0]["label"].squeeze().cuda().long()
+-            yield input, target
+-        dalipipeline.reset()
+-
+-    def __init__(self, dalipipeline):
+-        self.dalipipeline = dalipipeline
++if USE_CUDA:
++    class HybridTrainPipe(Pipeline):
++        def __init__(self, batch_size, num_threads, device_id, data_dir, crop, dali_cpu=False):
++            super(HybridTrainPipe, self).__init__(batch_size, num_threads, device_id, seed = 12 + device_id)
++            if torch.distributed.is_initialized():
++                local_rank = torch.distributed.get_rank()
++                world_size = torch.distributed.get_world_size()
++            else:
++                local_rank = 0
++                world_size = 1
++
++            self.input = ops.FileReader(
++                    file_root = data_dir,
++                    shard_id = local_rank,
++                    num_shards = world_size,
++                    random_shuffle = True)
++
++            if dali_cpu:
++                dali_device = "cpu"
++                self.decode = ops.HostDecoderRandomCrop(device=dali_device, output_type=types.RGB,
++                                                        random_aspect_ratio=[0.75, 4./3.],
++                                                        random_area=[0.08, 1.0],
++                                                        num_attempts=100)
++            else:
++                dali_device = "gpu"
++                # This padding sets the size of the internal nvJPEG buffers to be able to handle all images from full-sized ImageNet
++                # without additional reallocations
++                self.decode = ops.nvJPEGDecoderRandomCrop(device="mixed", output_type=types.RGB, device_memory_padding=211025920, host_memory_padding=140544512,
++                                                          random_aspect_ratio=[0.75, 4./3.],
++                                                          random_area=[0.08, 1.0],
++                                                          num_attempts=100)
++
++            self.res = ops.Resize(device=dali_device, resize_x=crop, resize_y=crop, interp_type=types.INTERP_TRIANGULAR)
++            self.cmnp = ops.CropMirrorNormalize(device = "gpu",
++                                                output_dtype = types.FLOAT,
++                                                output_layout = types.NCHW,
++                                                crop = (crop, crop),
++                                                image_type = types.RGB,
++                                                mean = [0.485 * 255,0.456 * 255,0.406 * 255],
++                                                std = [0.229 * 255,0.224 * 255,0.225 * 255])
++            self.coin = ops.CoinFlip(probability = 0.5)
++
++        def define_graph(self):
++            rng = self.coin()
++            self.jpegs, self.labels = self.input(name = "Reader")
++            images = self.decode(self.jpegs)
++            images = self.res(images)
++            output = self.cmnp(images.gpu(), mirror = rng)
++            return [output, self.labels]
++
++
++    class HybridValPipe(Pipeline):
++        def __init__(self, batch_size, num_threads, device_id, data_dir, crop, size):
++            super(HybridValPipe, self).__init__(batch_size, num_threads, device_id, seed = 12 + device_id)
++            if torch.distributed.is_initialized():
++                local_rank = torch.distributed.get_rank()
++                world_size = torch.distributed.get_world_size()
++            else:
++                local_rank = 0
++                world_size = 1
++
++            self.input = ops.FileReader(
++                    file_root = data_dir,
++                    shard_id = local_rank,
++                    num_shards = world_size,
++                    random_shuffle = False)
++
++            self.decode = ops.nvJPEGDecoder(device = "mixed", output_type = types.RGB)
++            self.res = ops.Resize(device = "gpu", resize_shorter = size)
++            self.cmnp = ops.CropMirrorNormalize(device = "gpu",
++                    output_dtype = types.FLOAT,
++                    output_layout = types.NCHW,
++                    crop = (crop, crop),
++                    image_type = types.RGB,
++                    mean = [0.485 * 255,0.456 * 255,0.406 * 255],
++                    std = [0.229 * 255,0.224 * 255,0.225 * 255])
++
++        def define_graph(self):
++            self.jpegs, self.labels = self.input(name = "Reader")
++            images = self.decode(self.jpegs)
++            images = self.res(images)
++            output = self.cmnp(images)
++            return [output, self.labels]
++
++
++    class DALIWrapper(object):
++        def gen_wrapper(dalipipeline):
++            for data in dalipipeline:
++                input = data[0]["data"]
++                target = data[0]["label"].squeeze().cuda().long()
++                yield input, target
++            dalipipeline.reset()
+ 
+-    def __iter__(self):
+-        return DALIWrapper.gen_wrapper(self.dalipipeline)
++        def __init__(self, dalipipeline):
++            self.dalipipeline = dalipipeline
++
++        def __iter__(self):
++            return DALIWrapper.gen_wrapper(self.dalipipeline)
+ 
+-def get_dali_train_loader(dali_cpu=False):
+-    def gdtl(data_path, batch_size, workers=5, _worker_init_fn=None):
+-        if torch.distributed.is_initialized():
+-            local_rank = torch.distributed.get_rank()
+-            world_size = torch.distributed.get_world_size()
+-        else:
+-            local_rank = 0
+-            world_size = 1
++    def get_dali_train_loader(dali_cpu=False):
++        def gdtl(data_path, batch_size, workers=5, _worker_init_fn=None):
++            if torch.distributed.is_initialized():
++                local_rank = torch.distributed.get_rank()
++                world_size = torch.distributed.get_world_size()
++            else:
++                local_rank = 0
++                world_size = 1
+ 
+-        traindir = os.path.join(data_path, 'train')
++            traindir = os.path.join(data_path, 'train')
+ 
+-        pipe = HybridTrainPipe(batch_size=batch_size, num_threads=workers,
+-                device_id = local_rank,
+-                data_dir = traindir, crop = 224, dali_cpu=dali_cpu)
++            pipe = HybridTrainPipe(batch_size=batch_size, num_threads=workers,
++                    device_id = local_rank,
++                    data_dir = traindir, crop = 224, dali_cpu=dali_cpu)
+ 
+-        pipe.build()
+-        test_run = pipe.run()
+-        train_loader = DALIClassificationIterator(pipe, size = int(pipe.epoch_size("Reader") / world_size))
++            pipe.build()
++            test_run = pipe.run()
++            train_loader = DALIClassificationIterator(pipe, size = int(pipe.epoch_size("Reader") / world_size))
+ 
+-        return DALIWrapper(train_loader), int(pipe.epoch_size("Reader") / (world_size * batch_size))
++            return DALIWrapper(train_loader), int(pipe.epoch_size("Reader") / (world_size * batch_size))
+ 
+-    return gdtl
++        return gdtl
+ 
+ 
+-def get_dali_val_loader():
+-    def gdvl(data_path, batch_size, workers=5, _worker_init_fn=None):
+-        if torch.distributed.is_initialized():
+-            local_rank = torch.distributed.get_rank()
+-            world_size = torch.distributed.get_world_size()
+-        else:
+-            local_rank = 0
+-            world_size = 1
++    def get_dali_val_loader():
++        def gdvl(data_path, batch_size, workers=5, _worker_init_fn=None):
++            if torch.distributed.is_initialized():
++                local_rank = torch.distributed.get_rank()
++                world_size = torch.distributed.get_world_size()
++            else:
++                local_rank = 0
++                world_size = 1
+ 
+-        valdir = os.path.join(data_path, 'val')
++            valdir = os.path.join(data_path, 'val')
+ 
+-        pipe = HybridValPipe(batch_size=batch_size, num_threads=workers,
+-                device_id = local_rank,
+-                data_dir = valdir,
+-                crop = 224, size = 256)
+-        pipe.build()
+-        test_run = pipe.run()
+-        val_loader = DALIClassificationIterator(pipe, size = int(pipe.epoch_size("Reader") / world_size), fill_last_batch=False)
++            pipe = HybridValPipe(batch_size=batch_size, num_threads=workers,
++                    device_id = local_rank,
++                    data_dir = valdir,
++                    crop = 224, size = 256)
++            pipe.build()
++            test_run = pipe.run()
++            val_loader = DALIClassificationIterator(pipe, size = int(pipe.epoch_size("Reader") / world_size), fill_last_batch=False)
+ 
+-        return DALIWrapper(val_loader), int(pipe.epoch_size("Reader") / (world_size * batch_size))
+-    return gdvl
++            return DALIWrapper(val_loader), int(pipe.epoch_size("Reader") / (world_size * batch_size))
++        return gdvl
+ 
+ 
+ def fast_collate(batch):
+@@ -189,8 +192,10 @@ class PrefetchedWrapper(object):
+ 
+         for next_input, next_target in loader:
+             with torch.cuda.stream(stream):
+-                next_input = next_input.cuda(async=True)
+-                next_target = next_target.cuda(async=True)
++                # next_input = next_input.cuda(async=True)
++                # next_target = next_target.cuda(async=True)
++                next_input = next_input.cuda()
++                next_target = next_target.cuda()
+                 next_input = next_input.float()
+                 next_input = next_input.sub_(mean).div_(std)
+ 

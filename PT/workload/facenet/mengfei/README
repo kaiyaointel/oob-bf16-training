@@ -1,0 +1,15 @@
+#Deps
+torchvision
+pip install -r requirements.txt
+
+cd PT/facenet/
+python setup.py install
+
+#Test Prepare
+cd PT/facenet/
+git apply ../workload/FaceNet-Pytorch/facenet_pytorch.patch
+
+#Broad-Product test (enable ipex as default)
+bash PT/workload/FaceNet-Pytorch/auto_benchmark.sh
+
+

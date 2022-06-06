@@ -1,0 +1,4 @@
+Pillow
+tensorboard
+tensorboardX
+xlsxwriter

@@ -1,0 +1,6 @@
+phonemizer
+attrdict
+bokeh==1.4.0
+flask
+unidecode==0.4.20
+librosa==0.8.0

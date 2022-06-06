@@ -1,0 +1,7 @@
+cython
+portalocker
+regex
+sacrebleu
+tqdm
+tensorboard
+tensorboardX

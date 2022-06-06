@@ -1,0 +1,22 @@
+#Deps
+ #build tcmalloc
+ wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.7.90/gperftools-2.7.90.tar.gz 
+ tar -xzf gperftools-2.7.90.tar.gz 
+ cd gperftools-2.7.90 
+ ./configure --prefix=your_path
+ make
+ make install
+
+#Test Prepare
+ cd ../../transformer_lt/
+ git apply ../workload/FaceNet-Pytorch/facenet_pytorch.patch
+ pip install -r docs/requirements.txt 
+ pip install --editable . 
+
+#dataset, you can copy it from mlt-ace:/tmp/data-bin
+ cd ../../transformer_lt/
+ cp /tmp/data-bin . 
+#Broad-Product test (enable ipex as default)
+bash ../workload/TransformerLt/run.sh
+
+

@@ -1,0 +1,112 @@
+diff --git a/examples/run_glue.py b/examples/run_glue.py
+index 1f586b7..3d73053 100644
+--- a/examples/run_glue.py
++++ b/examples/run_glue.py
+@@ -53,6 +53,7 @@ try:
+ except ImportError:
+     from tensorboardX import SummaryWriter
+ 
++import time #kyao
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -72,6 +73,7 @@ def set_seed(args):
+ 
+ def train(args, train_dataset, model, tokenizer):
+     """ Train the model """
++    batch_time = AverageMeter('Time', ':6.3f') #kyao
+     if args.local_rank in [-1, 0]:
+         tb_writer = SummaryWriter()
+ 
+@@ -173,13 +175,15 @@ def train(args, train_dataset, model, tokenizer):
+                 continue
+ 
+             model.train()
++            end = time.time() #kyao
+             batch = tuple(t.to(args.device) for t in batch)
+             inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+-            if args.model_type != "distilbert":
++            if args.model_type not in ["distilbert", "roberta", "xlm-roberta", "xlm", "bart"]:
+                 inputs["token_type_ids"] = (
+                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+-            outputs = model(**inputs)
++            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                outputs = model(**inputs)
+             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+ 
+             if args.n_gpu > 1:
+@@ -246,14 +250,18 @@ def train(args, train_dataset, model, tokenizer):
+                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
+-
++            batch_time.update(time.time() - end) #kyao
++            end = time.time() #kyao
+             if args.max_steps > 0 and global_step > args.max_steps:
+                 epoch_iterator.close()
+                 break
+         if args.max_steps > 0 and global_step > args.max_steps:
+             train_iterator.close()
+             break
+-
++    latency = batch_time.avg / args.train_batch_size * 1000 #kyao
++    throughput = args.train_batch_size / batch_time.avg #kyao
++    print('training latency: %3.0f ms on %d epoch'%(latency, epochs_trained)) #kyao
++    print('training throughput: %3.0f fps on %d epoch'%(throughput, epochs_trained)) #kyao
+     if args.local_rank in [-1, 0]:
+         tb_writer.close()
+ 
+@@ -295,7 +303,7 @@ def evaluate(args, model, tokenizer, prefix=""):
+ 
+             with torch.no_grad():
+                 inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+-                if args.model_type != "distilbert":
++                if args.model_type not in ["distilbert", "roberta", "xlm-roberta", "xlm", "bart"]:
+                     inputs["token_type_ids"] = (
+                         batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                     )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+@@ -370,7 +378,11 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
+     # Convert to Tensors and build dataset
+     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+     all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
+-    all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
++    #all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
++    if args.model_type in ["distilbert", "roberta", "xlm-roberta", "xlm", "bart"]:
++        all_token_type_ids = torch.tensor([0 for f in features], dtype=torch.long)
++    else:
++        all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
+     if output_mode == "classification":
+         all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
+     elif output_mode == "regression":
+@@ -421,6 +433,30 @@ class DataProcessingArguments:
+     )
+ 
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
++
++
+ def main():
+     parser = HfArgumentParser((ModelArguments, DataProcessingArguments, TrainingArguments))
+     model_args, dataprocessing_args, training_args = parser.parse_args_into_dataclasses()

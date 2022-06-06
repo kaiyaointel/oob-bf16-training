@@ -1,0 +1,233 @@
+diff --git a/v0.7/speech_recognition/rnnt/pytorch/inference.py b/v0.7/speech_recognition/rnnt/pytorch/inference.py
+index c02db65..2b5a60e 100644
+--- a/v0.7/speech_recognition/rnnt/pytorch/inference.py
++++ b/v0.7/speech_recognition/rnnt/pytorch/inference.py
+@@ -24,8 +24,14 @@ import torch
+ import random
+ import numpy as np
+ import pickle
+-
++import time
+ import torchvision
++import os
++try:
++    import intel_pytorch_extension as ipex
++    USE_IPEX = True
++except:
++    USE_IPEX = False
+ 
+ # import sys
+ # from IPython import embed
+@@ -38,6 +44,14 @@ def parse_args():
+     parser = argparse.ArgumentParser(description='Jasper')
+     parser.add_argument("--batch_size", default=16,
+                         type=int, help='data batch size')
++    parser.add_argument("--ipex", action='store_true', default=False, help='use ipex')
++    parser.add_argument('--precision', type=str, default="float32",
++                        help='precision, float32, bfloat16')
++    parser.add_argument("--jit", action='store_true', default=False, help='use jit script')
++    parser.add_argument('--channels_last', type=int, default=1,
++                        help='use channels last format')
++    parser.add_argument("-t", "--profile", action='store_true',
++                    help="Trigger profile on current topology.")
+     parser.add_argument("--steps", default=None,
+                         help='if not specified do evaluation on full dataset. otherwise only evaluates the specified number of iterations for each worker', type=int)
+     parser.add_argument("--model_toml", type=str,
+@@ -87,10 +101,41 @@ def eval(
+             'logits': [],
+         }
+ 
++        total_time = 0
++        total_seq_len = 0
++        dry_run = 0
+         for it, data in enumerate(tqdm(data_layer.data_iterator)):
+-            (t_audio_signal_e, t_a_sig_length_e,
+-             transcript_list, t_transcript_e,
+-             t_transcript_len_e) = audio_processor(data)
++            if args.ipex:
++                data_dpcpp = []
++                data_dpcpp.append(data[0].to(ipex.DEVICE))
++                data_dpcpp.append(data[1].to(ipex.DEVICE))
++                data_dpcpp.append([x.to(ipex.DEVICE) for x in data[2]])
++                data_dpcpp.append(data[3].to(ipex.DEVICE))
++                data_dpcpp.append(data[4].to(ipex.DEVICE))
++                data = data_dpcpp
++            
++            fw_start_time = time.time()
++            if args.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if args.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            (t_audio_signal_e, t_a_sig_length_e,
++                            transcript_list, t_transcript_e,
++                            t_transcript_len_e) = audio_processor(data)
++                    else:
++                        (t_audio_signal_e, t_a_sig_length_e,
++                        transcript_list, t_transcript_e,
++                        t_transcript_len_e) = audio_processor(data)
++            else:
++                if args.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        (t_audio_signal_e, t_a_sig_length_e,
++                        transcript_list, t_transcript_e,
++                        t_transcript_len_e) = audio_processor(data)
++                else:
++                    (t_audio_signal_e, t_a_sig_length_e,
++                    transcript_list, t_transcript_e,
++                    t_transcript_len_e) = audio_processor(data)
+ 
+             # t_log_probs_e, (_, _) = torch.jit.trace(encoderdecoder,
+             #     ((t_audio_signal_e, t_transcript_e),
+@@ -105,6 +150,10 @@ def eval(
+             # )
+             t_predictions_e = greedy_decoder.decode(
+                 t_audio_signal_e, t_a_sig_length_e)
++            fw_end_time = time.time()
++
++            if args.ipex:
++                transcript_list = [inp.to("cpu") for inp in transcript_list]
+ 
+             values_dict = dict(
+                 predictions=[t_predictions_e],
+@@ -114,8 +163,27 @@ def eval(
+             process_evaluation_batch(
+                 values_dict, _global_var_dict, labels=labels)
+ 
++            if dry_run < 3:
++                dry_run += 1
++                continue
++
++            total_time += fw_end_time - fw_start_time
++            total_seq_len += t_audio_signal_e.size()[0]*t_audio_signal_e.size()[1]
+             if args.steps is not None and it + 1 >= args.steps:
+                 break
++
++        print('Throughput:{}'.format(total_seq_len/total_time))
++        if args.profile:
++            import pathlib
++            timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++            if not os.path.exists(timeline_dir):
++                os.makedirs(timeline_dir)
++            timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                        "rnnt" + str(it) + '-' + str(os.getpid()) + '.json'
++            print(timeline_file)
++            prof.export_chrome_trace(timeline_file)
++            # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++            # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
+         wer = process_evaluation_epoch(_global_var_dict)
+         print("==========>>>>>>Evaluation WER: {0}\n".format(wer))
+         if args.save_prediction is not None:
+@@ -127,8 +195,29 @@ def eval(
+                 pickle.dump(logits, f, protocol=pickle.HIGHEST_PROTOCOL)
+ 
+ 
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
++
+ def main(args):
+     random.seed(args.seed)
++    print(args)
+     np.random.seed(args.seed)
+     torch.manual_seed(args.seed)
+     torch.backends.cudnn.benchmark = args.cudnn_benchmark
+@@ -136,6 +225,17 @@ def main(args):
+     if args.cuda:
+         assert(torch.cuda.is_available())
+ 
++    if args.ipex:
++        assert USE_IPEX
++
++    if args.ipex and args.precision=="bfloat16":
++        # Automatically mix precision
++        ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++        print('Run model with bfloat16...')
++
++    if args.precision == "bfloat16":
++        # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++        print("Running with bfloat16...")
+     model_definition = toml.load(args.model_toml)
+     dataset_vocab = model_definition['labels']['labels']
+     ctc_vocab = add_blank_label(dataset_vocab)
+@@ -179,7 +279,18 @@ def main(args):
+ 
+     if args.cuda:
+         audio_preprocessor.cuda()
++    elif args.channels_last:
++        audio_preprocessor_oob = audio_preprocessor
++        audio_preprocessor_oob = audio_preprocessor_oob.to(memory_format=torch.channels_last)
++        audio_preprocessor = audio_preprocessor_oob
++    elif args.ipex:
++       audio_preprocessor.to(ipex.DEVICE)
++
+     audio_preprocessor.eval()
++    if args.jit:
++        audio_preprocessor = torch.jit.script(audio_preprocessor)
++        audio_preprocessor = torch.jit._recursive.wrap_cpp_module(
++            torch._C._freeze_module(audio_preprocessor._c))
+ 
+     eval_transforms = []
+     if args.cuda:
+@@ -192,6 +303,24 @@ def main(args):
+ 
+     if args.cuda:
+         model.cuda()
++    elif args.channels_last:
++       model_oob = model
++       model_oob = model_oob.to(memory_format=torch.channels_last)
++       model = model_oob
++    elif args.ipex:
++       model.to(ipex.DEVICE)
++
++    if args.jit:
++        model.encoder = torch.jit.script(model.encoder)
++        model.encoder = torch.jit._recursive.wrap_cpp_module(
++            torch._C._freeze_module(model.encoder._c))
++        model.prediction = torch.jit.script(model.prediction)
++        model.prediction = torch.jit._recursive.wrap_cpp_module(
++            torch._C._freeze_module(model.prediction._c))
++        model.joint = torch.jit.script(model.joint)
++        model.joint = torch.jit._recursive.wrap_cpp_module(
++            torch._C._freeze_module(model.joint._c))
++        model = torch.jit.script(model)
+ 
+     # Ideally, I would jit this as well... But this is just the constructor...
+     greedy_decoder = RNNTGreedyDecoder(len(ctc_vocab) - 1, model)
+diff --git a/v0.7/speech_recognition/rnnt/pytorch/preprocessing.py b/v0.7/speech_recognition/rnnt/pytorch/preprocessing.py
+index 3b6af15..36d85a5 100644
+--- a/v0.7/speech_recognition/rnnt/pytorch/preprocessing.py
++++ b/v0.7/speech_recognition/rnnt/pytorch/preprocessing.py
+@@ -12,6 +12,8 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++from typing import Tuple
++import torch
+ import torch.nn as nn
+ 
+ from helpers import Optimization
+@@ -28,7 +30,7 @@ class AudioPreprocessing(nn.Module):
+             'optimization_level', Optimization.nothing)
+         self.featurizer = FeatureFactory.from_config(kwargs)
+ 
+-    def forward(self, x):
++    def forward(self, x: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+         input_signal, length = x
+         length.requires_grad_(False)
+         processed_signal = self.featurizer(x)

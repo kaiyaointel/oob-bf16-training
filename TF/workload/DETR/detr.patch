@@ -1,0 +1,85 @@
+From e75cafca9676a3032b9deba997670d57e0b1145d Mon Sep 17 00:00:00 2001
+From: shwetaoj <shweta.ojha@intel.com>
+Date: Mon, 25 Jan 2021 13:23:31 -0800
+Subject: [PATCH] Adding parameters to pass iterations and warmup
+
+---
+ detr_tf/training_config.py |  8 +++++++-
+ eval.py                    | 13 +++++++++++--
+ 2 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/detr_tf/training_config.py b/detr_tf/training_config.py
+index 4f884d7..4d7cdc6 100644
+--- a/detr_tf/training_config.py
++++ b/detr_tf/training_config.py
+@@ -35,6 +35,10 @@ def training_config_parser():
+     # Logging
+     parser.add_argument("--log",  required=False, action="store_true", default=False, help="Log into wandb")
+ 
++    # Inference
++    parser.add_argument("--num_iter",  type=int, required=False, default=500, help="Number of inference iterations")
++    parser.add_argument("--num_warmup",  type=int, required=False, default=10, help="Number of warmup iterations")
++    
+     return parser
+ 
+ 
+@@ -68,6 +72,9 @@ class TrainingConfig():
+         self.nlayers_lr = tf.Variable(1e-4)
+         self.nlayers = []
+ 
++        self.num_iter = 500
++        self.num_warmup = 10
++        
+         # Training progress
+         self.global_step = 0
+         self.log = False
+@@ -111,7 +118,6 @@ class DataConfig():
+         self.ann_file = os.path.join(self.data_dir, ann_file) if ann_file is not None else None
+         self.ann_dir = os.path.join(self.data_dir, ann_dir) if ann_dir is not None else None
+ 
+-
+ if __name__ == "__main__":
+     args = training_config_parser()
+     config = TrainingConfig()
+diff --git a/eval.py b/eval.py
+index 98c6189..29d9868 100644
+--- a/eval.py
++++ b/eval.py
+@@ -6,6 +6,7 @@ import tensorflow as tf
+ import os
+ import matplotlib.pyplot as plt
+ import numpy as np
++import time
+ 
+ from detr_tf.inference import get_model_inference
+ from detr_tf.data.coco import load_coco_dataset
+@@ -38,7 +39,11 @@ def eval_model(model, config, class_names, valid_dt):
+     }
+     it = 0
+ 
++    num_warmup = config.num_warmup
++    num_iter = config.num_iter
+     for images, target_bbox, target_class in valid_dt:
++        if it > num_warmup:
++            start = time.time()
+         # Forward pass
+         m_outputs = model(images)
+         # Run predictions
+@@ -54,8 +59,12 @@ def eval_model(model, config, class_names, valid_dt):
+         cal_map(p_bbox, p_labels, p_scores,  np.zeros((138, 138, len(p_bbox))), np.array(t_bbox), np.array(t_class), np.zeros((138, 138, len(t_bbox))), ap_data, iou_thresholds)
+         print(f"Computing map.....{it}", end="\r")
+         it += 1
+-        #if it > 10:
+-        #    break
++        if it > num_iter:
++            total_time = time.time() - start
++            iter_done = num_iter - num_warmup
++            print('Iter done: {:.2f} iteraions'.format(iter_done))
++            print('Throughput: {:.2f} samples/sec'.format(iter_done / total_time))
++            break
+ 
+     # Compute the mAp over all thresholds
+     calc_map(ap_data, iou_thresholds, class_names, print_result=True)
+-- 
+2.17.1
+

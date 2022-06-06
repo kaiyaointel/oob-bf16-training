@@ -1,0 +1,13 @@
+pandas 
+tqdm 
+scipy 
+spacy 
+requests 
+gensim 
+imutils 
+opencv-python 
+scikit-learn 
+opencv-contrib-python 
+pytest
+Pillow
+lpot

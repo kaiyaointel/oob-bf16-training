@@ -1,0 +1,22 @@
+#Deps
+python=3.7
+torch
+pip install -r requirements.txt
+cd ../../conv-seq-seq
+python setup.py develop
+
+#Dataset
+dataset=/lustre/dataset/pytorch-broad-models/Convseq2seq/dataset/wmt14_en_de/
+
+#checkpoint
+checkpoint=/lustre/dataset/pytorch-broad-models/Convseq2seq/models/checkpoint_best.pt
+
+#patch
+cd ../../conv-seq-seq
+git apply ../workload/Convseq2seq/convseq2seq.patch
+
+#Broad-Product Test
+bash run.sh --cores_per_instance=28 --dataset=$dataset --checkpoint=$checkpoint
+
+#subcommand
+python generate.py /lustre/dataset/pytorch-broad-models/Convseq2seq/dataset/wmt14_en_de/ --path /lustre/dataset/pytorch-broad-models/Convseq2seq/models/checkpoint_best.pt --beam 5 --remove-bpe --max-sentences 12000 --ipex

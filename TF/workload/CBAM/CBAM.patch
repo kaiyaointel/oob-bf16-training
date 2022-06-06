@@ -1,0 +1,154 @@
+diff --git a/ResNeXt.py b/ResNeXt.py
+index b7a9c3a..69ed662 100644
+--- a/ResNeXt.py
++++ b/ResNeXt.py
+@@ -17,13 +17,16 @@ import numpy as np
+ import os
+ import argparse
+ 
+-   
++if "BS" in os.environ:
++    BATCH_SIZE = int(os.environ["BS"])
++else:
++    BATCH_SIZE = 1
+ def main(args):
+     start = time.time()
+ 
+     model_name = args.model_name
+-    log_path=os.path.join('logs',model_name)
+-    ckpt_path=os.path.join('model',model_name)
++    log_path=os.path.join('./logs',model_name)
++    ckpt_path=os.path.join('./model',model_name)
+     if not os.path.exists(log_path):
+       os.mkdir(log_path)
+     if not os.path.exists(ckpt_path):
+@@ -91,9 +94,10 @@ def main(args):
+         test_acc = 0.0
+         test_loss = 0.0
+         test_pre_index = 0
+-        add = 1000
+-
+-        for it in range(test_iteration):
++        add = 1
++        reps_done=0
++        total_time=0.0
++        for it in range(args.num_eval_iter):
+             test_batch_x = test_x[test_pre_index: test_pre_index + add]
+             test_batch_y = test_y[test_pre_index: test_pre_index + add]
+             test_pre_index = test_pre_index + add
+@@ -104,12 +108,17 @@ def main(args):
+                 learning_rate: epoch_learning_rate,
+                 training_flag: False
+             }
+-
++            start = time.time()
+             loss_, acc_ = sess.run([cost, accuracy], feed_dict=test_feed_dict)
++            if it > args.num_warmup:
++                total_time += time.time() - start
++                reps_done += args.batch_size
+ 
+             test_loss += loss_
+             test_acc += acc_
+-
++        avg_time = total_time / reps_done
++        throughput = 1.0 / avg_time * args.batch_size
++        print("Throughput: {:.2f} fps".format(throughput))
+         test_loss /= test_iteration # average loss
+         test_acc /= test_iteration # average accuracy
+ 
+@@ -245,15 +254,15 @@ def main(args):
+         summary_writer = tf.summary.FileWriter(log_path, sess.graph)
+ 
+         epoch_learning_rate = init_learning_rate
+-        for epoch in range(1, total_epochs + 1):
++        for epoch in range(1, 2):
+             if epoch % 30 == 0 :
+                 epoch_learning_rate = epoch_learning_rate / 10
+ 
+             pre_index = 0
+             train_acc = 0.0
+             train_loss = 0.0
+-
+-            for step in range(1, iteration + 1):
++            '''
++            for step in range(1, 100):
+                 if pre_index + batch_size < 50000:
+                     batch_x = train_x[pre_index: pre_index + batch_size]
+                     batch_y = train_y[pre_index: pre_index + batch_size]
+@@ -283,9 +292,9 @@ def main(args):
+ 
+             train_summary = tf.Summary(value=[tf.Summary.Value(tag='train_loss', simple_value=train_loss),
+                                               tf.Summary.Value(tag='train_accuracy', simple_value=train_acc)])
+-
++            '''
+             test_acc, test_loss, test_summary = Evaluate(sess)
+-
++            break
+             summary_writer.add_summary(summary=train_summary, global_step=epoch)
+             summary_writer.add_summary(summary=test_summary, global_step=epoch)
+             summary_writer.flush()
+@@ -311,10 +320,13 @@ def parse_arguments(argv):
+     parser.add_argument('--momentum', type=float, help='momentum', default=0.9)
+     parser.add_argument('--learning_rate', type=float, help='learning_rate', default=0.1)
+     parser.add_argument('--reduction_ratio', type=int, help='reduction_ratio', default=8)
+-    parser.add_argument('--batch_size', type=int, help='batch_size', default=128)
++    parser.add_argument('--batch_size', type=int, help='batch_size of train and eval', default=1)
+     parser.add_argument('--iteration', type=int, help='training iteration', default=391)
+     parser.add_argument('--test_iteration', type=int, help='test iteration', default=10)
+     parser.add_argument('--total_epochs', type=int, help='total_epochs', default=100)
++    parser.add_argument('--num_warmup', type=int, help='num of eval warmup', default=10)
++    parser.add_argument('--num_eval_iter', type=int, help='num of eval iteration', default=500)
++    
+     
+     return parser.parse_args(argv)
+     
+diff --git a/attention_module.py b/attention_module.py
+index 269614c..432051c 100644
+--- a/attention_module.py
++++ b/attention_module.py
+@@ -15,7 +15,7 @@ def se_block(residual, name, ratio=8):
+   with tf.variable_scope(name):
+     channel = residual.get_shape()[-1]
+     # Global average pooling
+-    squeeze = tf.reduce_mean(residual, axis=[1,2], keepdims=True)   
++    squeeze = tf.reduce_mean(residual, axis=[1,2], keep_dims=True)   
+     assert squeeze.get_shape()[1:] == (1,1,channel)
+     excitation = tf.layers.dense(inputs=squeeze,
+                                  units=channel//ratio,
+@@ -55,7 +55,7 @@ def channel_attention(input_feature, name, ratio=8):
+   with tf.variable_scope(name):
+     
+     channel = input_feature.get_shape()[-1]
+-    avg_pool = tf.reduce_mean(input_feature, axis=[1,2], keepdims=True)
++    avg_pool = tf.reduce_mean(input_feature, axis=[1,2], keep_dims=True)
+         
+     assert avg_pool.get_shape()[1:] == (1,1,channel)
+     avg_pool = tf.layers.dense(inputs=avg_pool,
+@@ -74,7 +74,7 @@ def channel_attention(input_feature, name, ratio=8):
+                                  reuse=None)    
+     assert avg_pool.get_shape()[1:] == (1,1,channel)
+ 
+-    max_pool = tf.reduce_max(input_feature, axis=[1,2], keepdims=True)    
++    max_pool = tf.reduce_max(input_feature, axis=[1,2], keep_dims=True)    
+     assert max_pool.get_shape()[1:] == (1,1,channel)
+     max_pool = tf.layers.dense(inputs=max_pool,
+                                  units=channel//ratio,
+@@ -96,9 +96,9 @@ def spatial_attention(input_feature, name):
+   kernel_size = 7
+   kernel_initializer = tf.contrib.layers.variance_scaling_initializer()
+   with tf.variable_scope(name):
+-    avg_pool = tf.reduce_mean(input_feature, axis=[3], keepdims=True)
++    avg_pool = tf.reduce_mean(input_feature, axis=[3], keep_dims=True)
+     assert avg_pool.get_shape()[-1] == 1
+-    max_pool = tf.reduce_max(input_feature, axis=[3], keepdims=True)
++    max_pool = tf.reduce_max(input_feature, axis=[3], keep_dims=True)
+     assert max_pool.get_shape()[-1] == 1
+     concat = tf.concat([avg_pool,max_pool], 3)
+     assert concat.get_shape()[-1] == 2
+@@ -117,4 +117,4 @@ def spatial_attention(input_feature, name):
+     
+   return input_feature * concat
+     
+-    
+\ No newline at end of file
++    

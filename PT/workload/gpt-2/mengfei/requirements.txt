@@ -1,0 +1,16 @@
+Pillow
+psutil
+boto3
+botocore
+click
+filelock
+importlib-metadata
+jmespath
+joblib
+python-dateutil
+regex
+s3transfer
+sacremoses
+sentencepiece
+tokenizers
+zipp

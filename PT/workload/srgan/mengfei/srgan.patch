@@ -1,0 +1,135 @@
+diff --git a/implementations/srgan/srgan.py b/implementations/srgan/srgan.py
+index dae8c1b..65b04b7 100644
+--- a/implementations/srgan/srgan.py
++++ b/implementations/srgan/srgan.py
+@@ -14,6 +14,7 @@ import numpy as np
+ import math
+ import itertools
+ import sys
++import time
+ 
+ import torchvision.transforms as transforms
+ from torchvision.utils import save_image, make_grid
+@@ -45,10 +46,30 @@ parser.add_argument("--hr_height", type=int, default=256, help="high res. image
+ parser.add_argument("--hr_width", type=int, default=256, help="high res. image width")
+ parser.add_argument("--channels", type=int, default=3, help="number of image channels")
+ parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving image samples")
+-parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between model checkpoints")
++parser.add_argument("--arch", type=str, default="", help="model name")
++parser.add_argument('--outf', default='./model', help='folder to output images and model checkpoints')
++parser.add_argument('--inference', action='store_true', default=False)
++parser.add_argument('--num-warmup', default=10, type=int)
++parser.add_argument('--num-iterations', default=100, type=int)
++parser.add_argument('--ipex', action='store_true', default=False)
++parser.add_argument('--precision', default='float32', help='Precision, "float32" or "bfloat16"')
++parser.add_argument('--jit', action='store_true', default=False)
++parser.add_argument('--profile', action='store_true', default=False ,help='Trigger profile on current topology.')
++parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
++parser.add_argument("--latent_dim", type=int, default=62, help="dimensionality of the latent space")
++parser.add_argument('--config_file', type=str, default='./conf.yaml', help='config file for int8 tuning')
+ opt = parser.parse_args()
+ print(opt)
+ 
++
++class _DataLoader(object):
++    def __init__(self, data=None, batch_size=1):
++        self.data = data
++        self.batch_size = batch_size
++    def __iter__(self):
++        yield self.data[0], self.data[1]
++
+ cuda = torch.cuda.is_available()
+ 
+ hr_shape = (opt.hr_height, opt.hr_width)
+@@ -83,12 +104,84 @@ optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt
+ 
+ Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
+ 
+-dataloader = DataLoader(
+-    ImageDataset("../../data/%s" % opt.dataset_name, hr_shape=hr_shape),
+-    batch_size=opt.batch_size,
+-    shuffle=True,
+-    num_workers=opt.n_cpu,
+-)
++# dataloader = DataLoader(
++#     ImageDataset("../../data/%s" % opt.dataset_name, hr_shape=hr_shape),
++#     batch_size=opt.batch_size,
++#     shuffle=True,
++#     num_workers=opt.n_cpu,
++# )
++
++FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
++LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
++
++def generate(netG, batchsize, device):
++    n_row = 10
++    fixed_noise = Variable(FloatTensor(np.random.normal(0, 1, (n_row ** 2, 3, opt.latent_dim, opt.latent_dim))))
++    if opt.channels_last:
++        netG_oob, fixed_noise_oob = netG, fixed_noise
++        netG_oob = netG_oob.to(memory_format=torch.channels_last)
++        try:
++            fixed_noise_oob = fixed_noise_oob.to(memory_format=torch.channels_last)
++        except:
++            print("Input NHWC failed! Use normal input.")
++        netG, fixed_noise = netG_oob, fixed_noise_oob
++    else:
++        netG = netG.to(device=device)
++        fixed_noise = fixed_noise.to(device=device)
++    labels = np.array([num for _ in range(10) for num in range(10)])
++    labels = Variable(LongTensor(labels))
++
++    if opt.precision == 'int8':
++        from lpot.experimental import Quantization, common
++        quantizer = Quantization((opt.config_file))
++        dataset = (fixed_noise, labels)
++        calib_dataloader = _DataLoader(dataset)
++        quantizer.calib_dataloader = calib_dataloader
++        quantizer.model = common.Model(netG)
++        q_model = quantizer()
++        netG = q_model.model
++
++    netG.eval()
++
++    if opt.jit:
++        netG = torch.jit.trace(netG, (fixed_noise, labels))
++    with torch.no_grad():
++        for i in range(opt.num_warmup + opt.num_iterations):
++            if i == opt.num_warmup:
++                tic = time.time()
++            if opt.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if opt.precision == "bfloat16":
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            fake = netG(fixed_noise)
++                    else:
++                        fake = netG(fixed_noise)
++            else:
++                if opt.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        fake = netG(fixed_noise)
++                else:
++                    fake = netG(fixed_noise)
++    toc = time.time() - tic
++    print("Throughput: %.2f image/sec, batchsize: %d, latency = %.2f ms"%((opt.num_iterations*batchsize)/toc, batchsize, 1000*toc/opt.num_iterations))
++    #
++    if opt.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    opt.arch + '-' + str(i + 1) + '-' + str(os.getpid()) + '.json'
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++if opt.inference:
++    print("----------------Generation benchmarking---------------")
++    generate(generator, opt.batch_size, device=torch.device('cpu'))
++    import sys
++    sys.exit(0)
++
+ 
+ # ----------
+ #  Training

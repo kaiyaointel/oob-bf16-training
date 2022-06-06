@@ -1,0 +1,71 @@
+diff --git a/data_load.py b/data_load.py
+index 8f6eec3..d0e9f50 100644
+--- a/data_load.py
++++ b/data_load.py
+@@ -77,7 +77,8 @@ def get_batch():
+ 
+         # Calc total batch count
+         num_batch = len(fpaths) // hp.batch_size
+-
++        # print("num_batch",num_batch)
++        # exit()
+         fpaths = tf.convert_to_tensor(fpaths)
+         text_lengths = tf.convert_to_tensor(text_lengths)
+         texts = tf.convert_to_tensor(texts)
+diff --git a/hyperparams.py b/hyperparams.py
+index d2bc6c5..fa2c305 100644
+--- a/hyperparams.py
++++ b/hyperparams.py
+@@ -13,7 +13,8 @@ class Hyperparams:
+     vocab = "PE abcdefghijklmnopqrstuvwxyz'.?" # P: Padding E: End of Sentence
+ 
+     # data
+-    data = "/data/private/voice/LJSpeech-1.0"
++    # data = "/data/private/voice/LJSpeech-1.0"
++    data = "/home/chaofanl/workspace/tf_models_benchmark/dataset/LJSpeech-1.0"
+     # data = "/data/private/voice/nick"
+     test_data = 'harvard_sentences.txt'
+     max_duration = 10.0
+@@ -27,7 +28,7 @@ class Hyperparams:
+     win_length = int(sr*frame_length) # samples.
+     n_mels = 80 # Number of Mel banks to generate
+     power = 1.2 # Exponent for amplifying the predicted magnitude
+-    n_iter = 50 # Number of inversion iterations
++    n_iter = 5 # Number of inversion iterations
+     preemphasis = .97 # or None
+     max_db = 100
+     ref_db = 20
+diff --git a/train.py b/train.py
+index 6ac461c..9ddfa80 100644
+--- a/train.py
++++ b/train.py
+@@ -98,16 +98,18 @@ if __name__ == '__main__':
+     # with g.graph.as_default():
+     sv = tf.train.Supervisor(logdir=hp.logdir, save_summaries_secs=60, save_model_secs=0)
+     with sv.managed_session() as sess:
+-        while 1:
+-            for _ in tqdm(range(g.num_batch), total=g.num_batch, ncols=70, leave=False, unit='b'):
+-                _, gs = sess.run([g.train_op, g.global_step])
+-
+-                # Write checkpoint files
+-                if gs % 1000 == 0:
+-                    sv.saver.save(sess, hp.logdir + '/model_gs_{}k'.format(gs//1000))
+-
+-                    # plot the first alignment for logging
+-                    al = sess.run(g.alignments)
+-                    plot_alignment(al[0], gs)
++        # while 1:
++        for _ in tqdm(range(g.num_batch), total=g.num_batch, ncols=70, leave=False, unit='b'):
++            print("xxxxxxxxxxxxxxxxxxxx",g.num_batch)
++            _, gs = sess.run([g.train_op, g.global_step])
++
++            # Write checkpoint files
++            if gs % 100 == 0:
++                print("saved the first ckpt")
++                sv.saver.save(sess, hp.logdir + '/model_gs_{}k'.format(gs//1000))
++
++                # plot the first alignment for logging
++                al = sess.run(g.alignments)
++                plot_alignment(al[0], gs)
+ 
+     print("Done")

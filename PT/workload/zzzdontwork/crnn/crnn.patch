@@ -1,0 +1,345 @@
+diff --git a/dataset.py b/dataset.py
+index 2d11ade..126f03a 100644
+--- a/dataset.py
++++ b/dataset.py
+@@ -29,7 +29,7 @@ class lmdbDataset(Dataset):
+             sys.exit(0)
+ 
+         with self.env.begin(write=False) as txn:
+-            nSamples = int(txn.get('num-samples'))
++            nSamples = int(txn.get('num-samples'.encode()))
+             self.nSamples = nSamples
+ 
+         self.transform = transform
+@@ -42,8 +42,8 @@ class lmdbDataset(Dataset):
+         assert index <= len(self), 'index range error'
+         index += 1
+         with self.env.begin(write=False) as txn:
+-            img_key = 'image-%09d' % index
+-            imgbuf = txn.get(img_key)
++            img_key = 'img_' + str(index)
++            imgbuf = txn.get(img_key.encode('utf-8'))
+ 
+             buf = six.BytesIO()
+             buf.write(imgbuf)
+@@ -57,8 +57,8 @@ class lmdbDataset(Dataset):
+             if self.transform is not None:
+                 img = self.transform(img)
+ 
+-            label_key = 'label-%09d' % index
+-            label = str(txn.get(label_key))
++            label_key = 'lab_'+str(index)
++            label = str(txn.get(label_key.encode()).decode())
+ 
+             if self.target_transform is not None:
+                 label = self.target_transform(label)
+diff --git a/demo.py b/demo.py
+index c78e83f..29ec529 100644
+--- a/demo.py
++++ b/demo.py
+@@ -3,9 +3,10 @@ from torch.autograd import Variable
+ import utils
+ import dataset
+ from PIL import Image
++import time
+ 
+ import models.crnn as crnn
+-
++import intel_pytorch_extension as ipex
+ 
+ model_path = './data/crnn.pth'
+ img_path = './data/demo.png'
+@@ -27,9 +28,23 @@ if torch.cuda.is_available():
+ image = image.view(1, *image.size())
+ image = Variable(image)
+ 
++warmup = 10
++iterations = 100
++batch_size = 1
+ model.eval()
+-preds = model(image)
+-
++model = model.to(ipex.DEVICE)
++# model = torch.jit.script(model)
++image = torch.randn(batch_size, 1, 32, 100).to(ipex.DEVICE)
++
++for i in range(warmup):
++    preds = model(image)
++start = time.time()
++for i in range(iterations):
++    preds = model(image)
++duration = time.time() - start
++print("time: {}, batch_size: {}, fps: {}".format(duration, batch_size, batch_size * iterations / duration))
++
++'''
+ _, preds = preds.max(2)
+ preds = preds.transpose(1, 0).contiguous().view(-1)
+ 
+@@ -37,3 +52,4 @@ preds_size = Variable(torch.IntTensor([preds.size(0)]))
+ raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
+ sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
+ print('%-20s => %-20s' % (raw_pred, sim_pred))
++'''
+\ No newline at end of file
+diff --git a/train.py b/train.py
+index 3c3513a..1fc2cdc 100644
+--- a/train.py
++++ b/train.py
+@@ -15,11 +15,12 @@ import utils
+ import dataset
+ 
+ import models.crnn as crnn
++import time
+ 
+ parser = argparse.ArgumentParser()
+ parser.add_argument('--trainRoot', required=True, help='path to dataset')
+ parser.add_argument('--valRoot', required=True, help='path to dataset')
+-parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
++parser.add_argument('--workers', type=int, help='number of data loading workers', default=0)
+ parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
+ parser.add_argument('--imgH', type=int, default=32, help='the height of the input image to network')
+ parser.add_argument('--imgW', type=int, default=100, help='the width of the input image to network')
+@@ -42,6 +43,16 @@ parser.add_argument('--adadelta', action='store_true', help='Whether to use adad
+ parser.add_argument('--keep_ratio', action='store_true', help='whether to keep ratio for image resize')
+ parser.add_argument('--manualSeed', type=int, default=1234, help='reproduce experiemnt')
+ parser.add_argument('--random_sample', action='store_true', help='whether to sample the dataset with random sampler')
++parser.add_argument('--inf', action='store_true', help='inference only')
++parser.add_argument('--ipex', action='store_true', help='Use MKLDNN to get boost.')
++parser.add_argument('--precision', type=str, default="float32",
++                    help='precision, float32, bfloat16')
++parser.add_argument('--num_warmup', type=int, default=5, help='number of warm up, default is 5.')
++parser.add_argument('--max_iter', type=int, default=0, help='number of max iterations to run, default is 0.')
++parser.add_argument('--jit', action='store_true', help='Use Pytorch jit to get boost.')
++parser.add_argument('--profile', action='store_true', help='profile')
++parser.add_argument('--channels_last', type=int, default=1, help='use NHWC.')
++
+ opt = parser.parse_args()
+ print(opt)
+ 
+@@ -57,7 +68,7 @@ cudnn.benchmark = True
+ if torch.cuda.is_available() and not opt.cuda:
+     print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+ 
+-train_dataset = dataset.lmdbDataset(root=opt.trainroot)
++train_dataset = dataset.lmdbDataset(root=opt.trainRoot)
+ assert train_dataset
+ if not opt.random_sample:
+     sampler = dataset.randomSequentialSampler(train_dataset, opt.batchSize)
+@@ -65,11 +76,11 @@ else:
+     sampler = None
+ train_loader = torch.utils.data.DataLoader(
+     train_dataset, batch_size=opt.batchSize,
+-    shuffle=True, sampler=sampler,
++    shuffle=False, sampler=sampler,
+     num_workers=int(opt.workers),
+     collate_fn=dataset.alignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio=opt.keep_ratio))
+ test_dataset = dataset.lmdbDataset(
+-    root=opt.valroot, transform=dataset.resizeNormalize((100, 32)))
++    root=opt.valRoot, transform=dataset.resizeNormalize((100, 32)))
+ 
+ nclass = len(opt.alphabet) + 1
+ nc = 1
+@@ -95,17 +106,11 @@ if opt.pretrained != '':
+     crnn.load_state_dict(torch.load(opt.pretrained))
+ print(crnn)
+ 
+-image = torch.FloatTensor(opt.batchSize, 3, opt.imgH, opt.imgH)
++# image = torch.FloatTensor(opt.batchSize, 1, opt.imgH, opt.imgH)
+ text = torch.IntTensor(opt.batchSize * 5)
+ length = torch.IntTensor(opt.batchSize)
+ 
+-if opt.cuda:
+-    crnn.cuda()
+-    crnn = torch.nn.DataParallel(crnn, device_ids=range(opt.ngpu))
+-    image = image.cuda()
+-    criterion = criterion.cuda()
+-
+-image = Variable(image)
++# image = Variable(image)
+ text = Variable(text)
+ length = Variable(length)
+ 
+@@ -122,10 +127,11 @@ else:
+     optimizer = optim.RMSprop(crnn.parameters(), lr=opt.lr)
+ 
+ 
+-def val(net, dataset, criterion, max_iter=100):
++def val(net, dataset, criterion):
+     print('Start val')
+-
+-    for p in crnn.parameters():
++    image = torch.FloatTensor(opt.batchSize, 1, opt.imgH, opt.imgH)
++    image = Variable(image)
++    for p in net.parameters():
+         p.requires_grad = False
+ 
+     net.eval()
+@@ -133,33 +139,67 @@ def val(net, dataset, criterion, max_iter=100):
+         dataset, shuffle=True, batch_size=opt.batchSize, num_workers=int(opt.workers))
+     val_iter = iter(data_loader)
+ 
+-    i = 0
+     n_correct = 0
+     loss_avg = utils.averager()
+ 
+-    max_iter = min(max_iter, len(data_loader))
++    max_iter = len(data_loader) if opt.max_iter == 0 else opt.max_iter + opt.num_warmup
++    assert max_iter <= len(data_loader), "max_iter + num_warmup should be less than length of dataset"
++    if opt.ipex:
++        import intel_pytorch_extension as ipex
++        if opt.precision=="bfloat16":
++            # Automatically mix precision
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++            print('Run model with bfloat16...')
++        net = net.to(ipex.DEVICE)
++        if opt.jit:
++            net = torch.jit.trace(net, image.to(ipex.DEVICE))
++
++    total_time = 0
++    total_img = 0
+     for i in range(max_iter):
+         data = val_iter.next()
+-        i += 1
+         cpu_images, cpu_texts = data
+         batch_size = cpu_images.size(0)
+         utils.loadData(image, cpu_images)
+         t, l = converter.encode(cpu_texts)
+         utils.loadData(text, t)
+         utils.loadData(length, l)
++        if opt.ipex:
++            preds = net(image.to(ipex.DEVICE))
++        if i >= opt.num_warmup:
++            tic = time.time()
++        if opt.profile:
++            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                if opt.precision == "bfloat16":
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        preds = net(image)
++                else:
++                    preds = net(image)
++        else:
++            if opt.precision == "bfloat16":
++                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                    preds = net(image)
++            else:
++                preds = net(image)
++
++        if i >= opt.num_warmup:
++            total_time += time.time() - tic
++            total_img += opt.batchSize
+ 
+-        preds = crnn(image)
+         preds_size = Variable(torch.IntTensor([preds.size(0)] * batch_size))
+         cost = criterion(preds, text, preds_size, length) / batch_size
+         loss_avg.add(cost)
+ 
+         _, preds = preds.max(2)
+-        preds = preds.squeeze(2)
+-        preds = preds.transpose(1, 0).contiguous().view(-1)
++        preds = preds.squeeze()
++        if opt.batchSize != 1:
++            preds = preds.transpose(1, 0)
++        preds = preds.contiguous().view(-1)
+         sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
+         for pred, target in zip(sim_preds, cpu_texts):
+             if pred == target.lower():
+                 n_correct += 1
++        print("iter %d, correct in total: %d/%d" %(i, n_correct, i * opt.batchSize))
+ 
+     raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:opt.n_test_disp]
+     for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts):
+@@ -168,6 +208,20 @@ def val(net, dataset, criterion, max_iter=100):
+     accuracy = n_correct / float(max_iter * opt.batchSize)
+     print('Test loss: %f, accuray: %f' % (loss_avg.val(), accuracy))
+ 
++    print('Throughput is: %f imgs/s' % (total_img / total_time))
++
++    #
++    if opt.profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    "crnn" + str(i) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
+ 
+ def trainBatch(net, criterion, optimizer):
+     data = train_iter.next()
+@@ -186,28 +240,34 @@ def trainBatch(net, criterion, optimizer):
+     optimizer.step()
+     return cost
+ 
+-
+-for epoch in range(opt.nepoch):
+-    train_iter = iter(train_loader)
+-    i = 0
+-    while i < len(train_loader):
+-        for p in crnn.parameters():
+-            p.requires_grad = True
+-        crnn.train()
+-
+-        cost = trainBatch(crnn, criterion, optimizer)
+-        loss_avg.add(cost)
+-        i += 1
+-
+-        if i % opt.displayInterval == 0:
+-            print('[%d/%d][%d/%d] Loss: %f' %
+-                  (epoch, opt.nepoch, i, len(train_loader), loss_avg.val()))
+-            loss_avg.reset()
+-
+-        if i % opt.valInterval == 0:
+-            val(crnn, test_dataset, criterion)
+-
+-        # do checkpointing
+-        if i % opt.saveInterval == 0:
+-            torch.save(
+-                crnn.state_dict(), '{0}/netCRNN_{1}_{2}.pth'.format(opt.expr_dir, epoch, i))
++def train(epochs):
++    for epoch in range(epochs):
++        train_iter = iter(train_loader)
++        i = 0
++        while i < len(train_loader):
++            for p in crnn.parameters():
++                p.requires_grad = True
++            crnn.train()
++
++            cost = trainBatch(crnn, criterion, optimizer)
++            loss_avg.add(cost)
++            i += 1
++
++            if i % opt.displayInterval == 0:
++                print('[%d/%d][%d/%d] Loss: %f' %
++                    (epoch, opt.nepoch, i, len(train_loader), loss_avg.val()))
++                loss_avg.reset()
++
++            if i % opt.valInterval == 0:
++                val(crnn, test_dataset, criterion)
++
++            # do checkpointing
++            if i % opt.saveInterval == 0:
++                torch.save(
++                    crnn.state_dict(), '{0}/netCRNN_{1}_{2}.pth'.format(opt.expr_dir, epoch, i))
++
++if __name__ == "__main__":
++    if opt.inf and opt.pretrained is not None:
++        val(crnn, test_dataset, criterion)
++    else:
++        train(opt.nepoch)
+diff --git a/utils.py b/utils.py
+index 31f04b2..c7eda7d 100644
+--- a/utils.py
++++ b/utils.py
+@@ -131,7 +131,8 @@ def oneHot(v, v_length, nc):
+ 
+ 
+ def loadData(v, data):
+-    v.data.resize_(data.size()).copy_(data)
++    with torch.no_grad():
++        v.resize_(data.size()).copy_(data)
+ 
+ 
+ def prettyPrint(v):

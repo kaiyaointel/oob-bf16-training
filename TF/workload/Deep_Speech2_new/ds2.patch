@@ -1,0 +1,173 @@
+diff --git a/research/deep_speech/data/dataset.py b/research/deep_speech/data/dataset.py
+index 7fdcaf5..9bd9161 100644
+--- a/research/deep_speech/data/dataset.py
++++ b/research/deep_speech/data/dataset.py
+@@ -161,7 +161,7 @@ class DeepSpeechDataset(object):
+     self.entries = _preprocess_data(self.config.data_path)
+     # The generated spectrogram will have 161 feature bins.
+     self.num_feature_bins = 161
+-
++    self.size = len(self.entries)
+ 
+ def batch_wise_dataset_shuffle(entries, epoch_index, sortagrad, batch_size):
+   """Batch-wise shuffling of the data entries.
+diff --git a/research/deep_speech/deep_speech.py b/research/deep_speech/deep_speech.py
+index df14be3..6686a14 100644
+--- a/research/deep_speech/deep_speech.py
++++ b/research/deep_speech/deep_speech.py
+@@ -18,6 +18,7 @@ from __future__ import division
+ from __future__ import print_function
+ 
+ import os
++import time
+ # pylint: disable=g-bad-import-order
+ from absl import app as absl_app
+ from absl import flags
+@@ -105,8 +106,8 @@ def evaluate_model(estimator, speech_labels, entries, input_fn_eval):
+         len(targets[i].split()))
+ 
+   # Get mean value
+-  total_cer /= num_of_examples
+-  total_wer /= num_of_examples
++  #total_cer /= num_of_examples
++  #total_wer /= num_of_examples
+ 
+   global_step = estimator.get_variable_value(tf.compat.v1.GraphKeys.GLOBAL_STEP)
+   eval_results = {
+@@ -226,11 +227,12 @@ def run_deep_speech(_):
+   tf.compat.v1.set_random_seed(flags_obj.seed)
+   # Data preprocessing
+   tf.compat.v1.logging.info("Data preprocessing...")
+-  train_speech_dataset = generate_dataset(flags_obj.train_data_dir)
++  if not flags_obj.only_dev:
++    train_speech_dataset = generate_dataset(flags_obj.train_data_dir)
+   eval_speech_dataset = generate_dataset(flags_obj.eval_data_dir)
+ 
+   # Number of label classes. Label string is "[a-z]' -"
+-  num_classes = len(train_speech_dataset.speech_labels)
++  num_classes = len(eval_speech_dataset.speech_labels)
+ 
+   # Use distribution strategy for multi-gpu training
+   num_gpus = flags_core.get_num_gpus(flags_obj)
+@@ -259,46 +261,66 @@ def run_deep_speech(_):
+   }
+ 
+   per_replica_batch_size = per_device_batch_size(flags_obj.batch_size, num_gpus)
+-
+-  def input_fn_train():
+-    return dataset.input_fn(
+-        per_replica_batch_size, train_speech_dataset)
++  if not flags_obj.only_dev:
++    def input_fn_train():
++      return dataset.input_fn(
++          per_replica_batch_size, train_speech_dataset)
+ 
+   def input_fn_eval():
+     return dataset.input_fn(
+         per_replica_batch_size, eval_speech_dataset)
+-
+-  total_training_cycle = (flags_obj.train_epochs //
+-                          flags_obj.epochs_between_evals)
+-  for cycle_index in range(total_training_cycle):
+-    tf.compat.v1.logging.info("Starting a training cycle: %d/%d",
+-                    cycle_index + 1, total_training_cycle)
+-
+-    # Perform batch_wise dataset shuffling
+-    train_speech_dataset.entries = dataset.batch_wise_dataset_shuffle(
+-        train_speech_dataset.entries, cycle_index, flags_obj.sortagrad,
+-        flags_obj.batch_size)
+-
+-    estimator.train(input_fn=input_fn_train)
+-
+-    # Evaluation
+-    tf.compat.v1.logging.info("Starting to evaluate...")
+-
+-    eval_results = evaluate_model(
+-        estimator, eval_speech_dataset.speech_labels,
+-        eval_speech_dataset.entries, input_fn_eval)
+-
+-    # Log the WER and CER results.
+-    benchmark_logger.log_evaluation_result(eval_results)
+-    tf.compat.v1.logging.info(
+-        "Iteration {}: WER = {:.2f}, CER = {:.2f}".format(
+-            cycle_index + 1, eval_results[_WER_KEY], eval_results[_CER_KEY]))
+-
+-    # If some evaluation threshold is met
+-    if model_helpers.past_stop_threshold(
+-        flags_obj.wer_threshold, eval_results[_WER_KEY]):
+-      break
+-
++  
++  
++  if not flags_obj.only_dev:
++    total_training_cycle = (flags_obj.train_epochs //
++                            flags_obj.epochs_between_evals)
++    for cycle_index in range(total_training_cycle):
++      tf.compat.v1.logging.info("Starting a training cycle: %d/%d",
++                      cycle_index + 1, total_training_cycle)
++
++      # Perform batch_wise dataset shuffling
++      train_speech_dataset.entries = dataset.batch_wise_dataset_shuffle(
++          train_speech_dataset.entries, cycle_index, flags_obj.sortagrad,
++          flags_obj.batch_size)
++      print("********** {}".format('starting to training'))
++      estimator.train(input_fn=input_fn_train)
++
++      # Evaluation
++      tf.compat.v1.logging.info("Starting to evaluate...")
++
++      eval_results = evaluate_model(
++          estimator, eval_speech_dataset.speech_labels,
++          eval_speech_dataset.entries, input_fn_eval)
++
++      # Log the WER and CER results.
++      #benchmark_logger.log_evaluation_result(eval_results)
++      tf.compat.v1.logging.info(
++          "Iteration {}: WER = {:.2f}, CER = {:.2f}".format(
++              cycle_index + 1, eval_results[_WER_KEY], eval_results[_CER_KEY]))
++
++      # If some evaluation threshold is met
++      if model_helpers.past_stop_threshold(
++          flags_obj.wer_threshold, eval_results[_WER_KEY]):
++        break
++  
++  else:
++      # Evaluation
++      tf.compat.v1.logging.info("Starting to evaluate...")
++      
++      tic = time.time()
++      eval_results = evaluate_model(
++          estimator, eval_speech_dataset.speech_labels,
++          eval_speech_dataset.entries, input_fn_eval)
++      toc = time.time()
++      print("***** During time: {}".format(toc-tic))
++      print("***** Total sample: {}".format(eval_speech_dataset.size))
++      print("***** Throughput: {} samples/s".format(eval_speech_dataset.size / (toc-tic)))
++
++      # Log the WER and CER results.
++      #benchmark_logger.log_evaluation_result(eval_results)
++      #tf.compat.v1.logging.info(
++      #    "Iteration {}: WER = {:.2f}, CER = {:.2f}".format(
++      #        cycle_index + 1, eval_results[_WER_KEY], eval_results[_CER_KEY]))
+ 
+ def define_deep_speech_flags():
+   """Add flags for run_deep_speech."""
+@@ -389,6 +411,10 @@ def define_deep_speech_flags():
+       case_sensitive=False,
+       help=flags_core.help_wrap("Type of RNN cell."))
+ 
++  flags.DEFINE_bool(
++      name="only_dev", default=False,
++      help=flags_core.help_wrap("Use bias in the last fully-connected layer"))
++
+   # Training related flags
+   flags.DEFINE_float(
+       name="learning_rate", default=5e-4,
+@@ -403,7 +429,6 @@ def define_deep_speech_flags():
+           "the desired wer_threshold is 0.23 which is the result achieved by "
+           "MLPerf implementation."))
+ 
+-
+ def main(_):
+   run_deep_speech(flags_obj)
+ 

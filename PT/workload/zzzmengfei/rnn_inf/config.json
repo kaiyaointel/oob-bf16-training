@@ -1,0 +1,32 @@
+{
+    "framework": "pytorch",
+    "model": "RNN-T",
+    "requirement": "requirements.txt",
+    
+    "benchmark": [
+        {
+            "basecommit": "",
+            "patch": "RNN-T.patch",
+            "precision": "fp32",
+            "mode": "realtime",
+            "batch_size": "1",
+            "cores_per_instance": "4",
+            "checkpoint": "/home2/pytorch-broad-models/RNN-T/checkpoint/rnnt.pt",
+            "dataset": "/home2/pytorch-broad-models/RNN-T/dataset/LibriSpeech/",
+            "script_path": "run.sh"
+        },
+        
+        {
+            "basecommit": "",
+            "patch": "RNN-T.patch",
+            "precision": "fp32",
+            "mode": "throughput",
+            "batch_size": "8,16,32,64",
+            "cores_per_instance": "24",
+            "checkpoint": "/home2/pytorch-broad-models/RNN-T/checkpoint/rnnt.pt",
+            "dataset": "/home2/pytorch-broad-models/RNN-T/dataset/LibriSpeech/",
+            "script_path": "run.sh"
+        }
+    ]
+}
+

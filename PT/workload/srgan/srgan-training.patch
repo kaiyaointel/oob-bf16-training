@@ -1,0 +1,181 @@
+diff --git a/implementations/srgan/srgan.py b/implementations/srgan/srgan.py
+index dae8c1b..f602b5c 100644
+--- a/implementations/srgan/srgan.py
++++ b/implementations/srgan/srgan.py
+@@ -27,7 +27,7 @@ from datasets import *
+ import torch.nn as nn
+ import torch.nn.functional as F
+ import torch
+-
++import time #kyao
+ os.makedirs("images", exist_ok=True)
+ os.makedirs("saved_models", exist_ok=True)
+ 
+@@ -46,6 +46,8 @@ parser.add_argument("--hr_width", type=int, default=256, help="high res. image w
+ parser.add_argument("--channels", type=int, default=3, help="number of image channels")
+ parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving image samples")
+ parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between model checkpoints")
++parser.add_argument("--bf16-train-cpu", action='store_true')
++parser.add_argument("--bf16-train-cuda", action='store_true')
+ opt = parser.parse_args()
+ print(opt)
+ 
+@@ -84,17 +86,42 @@ optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt
+ Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
+ 
+ dataloader = DataLoader(
+-    ImageDataset("../../data/%s" % opt.dataset_name, hr_shape=hr_shape),
++    ImageDataset("/home2/pytorch-broad-models/CelebA/celeba/%s" % opt.dataset_name, hr_shape=hr_shape),
+     batch_size=opt.batch_size,
+     shuffle=True,
+     num_workers=opt.n_cpu,
+ )
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
++
+ # ----------
+ #  Training
+ # ----------
+-
++batch_time = AverageMeter('Time', ':6.3f') #kyao
+ for epoch in range(opt.epoch, opt.n_epochs):
++
++    end = time.time() #kyao
+     for i, imgs in enumerate(dataloader):
+ 
+         # Configure model input
+@@ -108,20 +135,45 @@ for epoch in range(opt.epoch, opt.n_epochs):
+         # ------------------
+         #  Train Generators
+         # ------------------
+-
+         optimizer_G.zero_grad()
+-
+-        # Generate a high resolution image from low resolution input
+-        gen_hr = generator(imgs_lr)
+-
+-        # Adversarial loss
+-        loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
+-
+-        # Content loss
+-        gen_features = feature_extractor(gen_hr)
+-        real_features = feature_extractor(imgs_hr)
+-        loss_content = criterion_content(gen_features, real_features.detach())
+-
++        if opt.bf16_train_cuda:
++            with torch.cuda.amp.autocast(enabled=True):
++                print("is running bf16 on cuda...")
++                # Generate a high resolution image from low resolution input
++                gen_hr = generator(imgs_lr)
++
++                # Adversarial loss
++                loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
++
++                # Content loss
++                gen_features = feature_extractor(gen_hr)
++                real_features = feature_extractor(imgs_hr)
++                loss_content = criterion_content(gen_features, real_features.detach())
++        elif opt.bf16_train_cpu:
++            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                print("is running bf16 on cpu...")
++                # Generate a high resolution image from low resolution input
++                gen_hr = generator(imgs_lr)
++
++                # Adversarial loss
++                loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
++
++                # Content loss
++                gen_features = feature_extractor(gen_hr)
++                real_features = feature_extractor(imgs_hr)
++                loss_content = criterion_content(gen_features, real_features.detach())
++        else:
++            print("is running fp32...")
++            # Generate a high resolution image from low resolution input
++            gen_hr = generator(imgs_lr)
++
++            # Adversarial loss
++            loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
++
++            # Content loss
++            gen_features = feature_extractor(gen_hr)
++            real_features = feature_extractor(imgs_hr)
++            loss_content = criterion_content(gen_features, real_features.detach())
+         # Total loss
+         loss_G = loss_content + 1e-3 * loss_GAN
+ 
+@@ -135,15 +187,30 @@ for epoch in range(opt.epoch, opt.n_epochs):
+         optimizer_D.zero_grad()
+ 
+         # Loss of real and fake images
+-        loss_real = criterion_GAN(discriminator(imgs_hr), valid)
+-        loss_fake = criterion_GAN(discriminator(gen_hr.detach()), fake)
++        if opt.bf16_train_cuda:
++            with torch.cuda.amp.autocast(enabled=True):
++                print("is running bf16 on cuda...")
++                loss_real = criterion_GAN(discriminator(imgs_hr), valid)
++                loss_fake = criterion_GAN(discriminator(gen_hr.detach()), fake)
++        elif opt.bf16_train_cpu:
++            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                print("is running bf16 on cpu...")
++                loss_real = criterion_GAN(discriminator(imgs_hr), valid)
++                loss_fake = criterion_GAN(discriminator(gen_hr.detach()), fake)
++        else:
++            print("is running fp32...")
++            loss_real = criterion_GAN(discriminator(imgs_hr), valid)
++            loss_fake = criterion_GAN(discriminator(gen_hr.detach()), fake)
+ 
+         # Total loss
+         loss_D = (loss_real + loss_fake) / 2
+ 
+         loss_D.backward()
+         optimizer_D.step()
+-
++        
++        batch_time.update(time.time() - end) #kyao
++        end = time.time() #kyao
++        
+         # --------------
+         #  Log Progress
+         # --------------
+@@ -161,8 +228,20 @@ for epoch in range(opt.epoch, opt.n_epochs):
+             imgs_lr = make_grid(imgs_lr, nrow=1, normalize=True)
+             img_grid = torch.cat((imgs_lr, gen_hr), -1)
+             save_image(img_grid, "images/%d.png" % batches_done, normalize=False)
++            
++        ### performance computation #kyao
++        latency = batch_time.avg / opt.batch_size * 1000 #kyao
++        throughput = opt.batch_size / batch_time.avg #kyao
++        print('training latency: %.3f ms on %d epoch'%(latency, epoch)) #kyao
++        print('training throughput: %.3f fps on %d epoch'%(throughput, epoch)) #kyao
+ 
+     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+         # Save model checkpoints
+         torch.save(generator.state_dict(), "saved_models/generator_%d.pth" % epoch)
+         torch.save(discriminator.state_dict(), "saved_models/discriminator_%d.pth" % epoch)
++    
++    ### performance computation #kyao
++    latency = batch_time.avg / opt.batch_size * 1000 #kyao
++    throughput = opt.batch_size / batch_time.avg #kyao
++    print('training latency: %.3f ms on %d epoch'%(latency, epoch)) #kyao
++    print('training throughput: %.3f fps on %d epoch'%(throughput, epoch)) #kyao

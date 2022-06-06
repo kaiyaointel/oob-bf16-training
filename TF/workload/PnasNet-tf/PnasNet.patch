@@ -1,0 +1,56 @@
+diff --git a/main.py b/main.py
+index 46d9b6e..62a1abe 100644
+--- a/main.py
++++ b/main.py
+@@ -1,5 +1,7 @@
+ import argparse
+ import os
++import time
++
+ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+ 
+ import torchvision.datasets as datasets
+@@ -15,6 +17,13 @@ parser.add_argument('--valdir', type=str, default='data/val',
+ parser.add_argument('--image_size', type=int, default=331,
+                     help='image size')
+ 
++parser.add_argument('--num_warmup', type=int, default=10,
++                    help='num of warmup, default is 10.')
++parser.add_argument('--batch_size', type=int, default=1,
++                    help='batch size, default is 1.')
++parser.add_argument('--num_iters', type=int, default=500,
++                    help='total inference iters')
++
+ 
+ def main():
+   args = parser.parse_args()
+@@ -33,10 +42,18 @@ def main():
+ 
+   c1, c5 = 0, 0
+   val_dataset = datasets.ImageFolder(args.valdir)
++ 
++  total_time = 0
++  total_samples = 0
+   for i, (image, label) in enumerate(val_dataset):
++    tic = time.time()
+     logits_val = sess.run(logits, feed_dict={image_ph: image})
+     top5 = logits_val.squeeze().argsort()[::-1][:5]
+     top1 = top5[0]
++    if i > args.num_warmup:
++      total_time += time.time() - tic
++      total_samples += 1
++
+     if label + 1 == top1:
+       c1 += 1
+     if label + 1 in top5:
+@@ -46,6 +63,10 @@ def main():
+           'Prec@5 {3:.3f}\t'.format(
+           i + 1, len(val_dataset), c1 / (i + 1.), c5 / (i + 1.)))
+ 
++    if i > args.num_iters:
++      break
++
++  print("Total time: {:.2f} \nThroughput: {}".format(total_time, total_samples/total_time))
+ 
+ if __name__ == '__main__':
+   main()

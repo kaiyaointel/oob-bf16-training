@@ -1,0 +1,162 @@
+diff --git a/examples/run_language_modeling.py b/examples/run_language_modeling.py
+index 2b0163d..50d12e2 100644
+--- a/examples/run_language_modeling.py
++++ b/examples/run_language_modeling.py
+@@ -49,12 +49,14 @@ from transformers import (
+     get_linear_schedule_with_warmup,
+ )
+ 
++import time #kyao
+ 
+ try:
+     from torch.utils.tensorboard import SummaryWriter
+ except ImportError:
+     from tensorboardX import SummaryWriter
+ 
++from torch.autograd import Variable #kyao
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -123,6 +125,28 @@ class LineByLineTextDataset(Dataset):
+     def __getitem__(self, i):
+         return torch.tensor(self.examples[i], dtype=torch.long)
+ 
++class AverageMeter(object):  #kyao (whole class)
++    """Computes and stores the average and current value"""
++    def __init__(self, name, fmt=':f'):
++        self.name = name
++        self.fmt = fmt
++        self.reset()
++
++    def reset(self):
++        self.val = 0
++        self.avg = 0
++        self.sum = 0
++        self.count = 0
++
++    def update(self, val, n=1):
++        self.val = val
++        self.sum += val * n
++        self.count += n
++        self.avg = self.sum / self.count
++
++    def __str__(self):
++        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
++        return fmtstr.format(**self.__dict__)
+ 
+ def load_and_cache_examples(args, tokenizer, evaluate=False):
+     file_path = args.eval_data_file if evaluate else args.train_data_file
+@@ -211,6 +235,7 @@ def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> T
+ 
+ 
+ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> Tuple[int, float]:
++    batch_time = AverageMeter('Time', ':6.3f') #kyao
+     """ Train the model """
+     if args.local_rank in [-1, 0]:
+         tb_writer = SummaryWriter()
+@@ -317,10 +342,17 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
+         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0]
+     )
+     set_seed(args)  # Added here for reproducibility
++    
++    count = 0
++    end = time.time() #kyao
+     for _ in train_iterator:
+         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
++        
+         for step, batch in enumerate(epoch_iterator):
+-
++            count = count + 1
++            print("count = ", count)
++            if count == 50:
++                exit()
+             # Skip past any already trained steps if resuming training
+             if steps_trained_in_current_epoch > 0:
+                 steps_trained_in_current_epoch -= 1
+@@ -330,7 +362,14 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
+             inputs = inputs.to(args.device)
+             labels = labels.to(args.device)
+             model.train()
+-            outputs = model(inputs, masked_lm_labels=labels) if args.mlm else model(inputs, labels=labels)
++            if args.bf16_train_cuda:
++                with torch.cuda.amp.autocast(enabled=True): #kyao 12034160
++                    outputs = model(inputs, masked_lm_labels=labels) if args.mlm else model(inputs, labels=labels) #kyao 12034160
++            elif args.bf16_train_cpu:
++                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16): #kyao 12034160
++                    outputs = model(inputs, masked_lm_labels=labels) if args.mlm else model(inputs, labels=labels) #kyao 12034160
++            else:
++                outputs = model(inputs, masked_lm_labels=labels) if args.mlm else model(inputs, labels=labels) #kyao 12034160
+             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+ 
+             if args.n_gpu > 1:
+@@ -341,6 +380,10 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
+             if args.fp16:
+                 with amp.scale_loss(loss, optimizer) as scaled_loss:
+                     scaled_loss.backward()
++            elif args.bf16_train_cpu:
++                loss = loss.detach().cpu()
++                loss = Variable(loss, requires_grad = True)
++                loss.backward()
+             else:
+                 loss.backward()
+ 
+@@ -386,14 +429,24 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
+                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
+-
++            
++            batch_time.update(time.time() - end) #kyao
++            end = time.time() #kyao
+             if args.max_steps > 0 and global_step > args.max_steps:
+                 epoch_iterator.close()
+                 break
++            latency = batch_time.avg / args.train_batch_size * 1000 #kyao
++            throughput = args.train_batch_size / batch_time.avg #kyao
++            print('training latency: %.3f ms on %d epoch'%(latency, epochs_trained)) #kyao
++            print('training throughput: %.3f fps on %d epoch'%(throughput, epochs_trained)) #kyao
+         if args.max_steps > 0 and global_step > args.max_steps:
+             train_iterator.close()
+             break
+ 
++    latency = batch_time.avg / args.train_batch_size * 1000 #kyao
++    throughput = args.train_batch_size / batch_time.avg #kyao
++    print('training latency: %.3f ms on %d epoch'%(latency, epochs_trained)) #kyao
++    print('training throughput: %.3f fps on %d epoch'%(throughput, epochs_trained)) #kyao
+     if args.local_rank in [-1, 0]:
+         tb_writer.close()
+ 
+@@ -438,9 +491,9 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
+         inputs, labels = mask_tokens(batch, tokenizer, args) if args.mlm else (batch, batch)
+         inputs = inputs.to(args.device)
+         labels = labels.to(args.device)
+-
+         with torch.no_grad():
+-            outputs = model(inputs, masked_lm_labels=labels) if args.mlm else model(inputs, labels=labels)
++            with torch.cuda.amp.autocast(enabled=True):
++                outputs = model(inputs, masked_lm_labels=labels) if args.mlm else model(inputs, labels=labels)
+             lm_loss = outputs[0]
+             eval_loss += lm_loss.mean().item()
+         nb_eval_steps += 1
+@@ -577,6 +630,8 @@ def main():
+         help="Evaluate all checkpoints starting with the same prefix as model_name_or_path ending and ending with step number",
+     )
+     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
++    parser.add_argument("--bf16-train-cpu", action="store_true") #kyao
++    parser.add_argument("--bf16-train-cuda", action="store_true") #kyao
+     parser.add_argument(
+         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory"
+     )
+diff --git a/src/transformers/modeling_gpt2.py b/src/transformers/modeling_gpt2.py
+index c89fc46..760b5ec 100644
+--- a/src/transformers/modeling_gpt2.py
++++ b/src/transformers/modeling_gpt2.py
+@@ -146,7 +146,7 @@ class Attention(nn.Module):
+             w = w / math.sqrt(v.size(-1))
+         nd, ns = w.size(-2), w.size(-1)
+         mask = self.bias[:, :, ns - nd : ns, :ns]
+-        w = torch.where(mask, w, self.masked_bias)
++        w = torch.where(mask, w, self.masked_bias.half())
+ 
+         if attention_mask is not None:
+             # Apply the attention mask

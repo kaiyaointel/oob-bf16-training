@@ -1,0 +1,106 @@
+diff --git a/src/transformers/trainer.py b/src/transformers/trainer.py
+index b8e6e494b..f81f45be5 100755
+--- a/src/transformers/trainer.py
++++ b/src/transformers/trainer.py
+@@ -23,6 +23,7 @@ import shutil
+ import warnings
+ from pathlib import Path
+ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
++import time
+ 
+ import numpy as np
+ import torch
+@@ -1257,10 +1258,49 @@ class Trainer:
+             self._past = None
+ 
+         self.callback_handler.eval_dataloader = dataloader
++        total_time = 0
++        total_data = 0
++        if self.args.channels_last:
++            oob_model = model
++            oob_model = oob_model.to(memory_format=torch.channels_last)
++            model = oob_model
++            print("---- Use channels last format.")
++        if self.args.mkldnn:
++            import intel_pytorch_extension as ipex
++            model = model.to(ipex.DEVICE)
++            if self.args.jit:
++                ipex.core.enable_jit_opt()
++                model = torch.jit.script(model)
++
++        for index, inputs in enumerate(dataloader):
++            if self.args.eval_iters != 0 and index > self.args.eval_iters:
++                break
++            if self.args.mkldnn:
++                inputs = {key:value.to(ipex.DEVICE) for key,value in inputs.items()}
++            if self.args.channels_last:
++                inputs = {key:value.to(memory_format=torch.channels_last) for key,value in inputs.items()}
++            tic = time.time()
++            if self.args.profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if self.args.precision == 'bfloat16':
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
++                    else:
++                        loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
++            else:
++                if self.args.precision == 'bfloat16':
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
++                else:
++                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
++            toc = time.time()
+ 
+-        for inputs in dataloader:
+-            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
+             batch_size = inputs[list(inputs.keys())[0]].shape[0]
++
++            if index > self.args.num_warmup_iters:
++                total_time += toc - tic
++                total_data += batch_size
++
+             if loss is not None:
+                 eval_losses.extend([loss] * batch_size)
+             if logits is not None:
+@@ -1269,6 +1309,21 @@ class Trainer:
+                 label_ids = labels if label_ids is None else nested_concat(label_ids, labels, dim=0)
+             self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
+ 
++        if self.args.profile:
++            import pathlib
++            timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++            if not os.path.exists(timeline_dir):
++                os.makedirs(timeline_dir)
++            timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                        "distilbert" + str(index) + '-' + str(os.getpid()) + '.json'
++            print(timeline_file)
++            prof.export_chrome_trace(timeline_file)
++            # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++            # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
++
++        print(" time cost %s\n total samples %s \n inference latency: %ss\n inference Throughput: %s images/s\n "
++                %(total_time, total_data, total_time /total_data, total_data / total_time))
++
+         if self.args.past_index and hasattr(self, "_past"):
+             # Clean the state at the end of the evaluation loop
+             delattr(self, "_past")
+diff --git a/src/transformers/training_args.py b/src/transformers/training_args.py
+index 9359a9f17..f1d17c22a 100644
+--- a/src/transformers/training_args.py
++++ b/src/transformers/training_args.py
+@@ -320,6 +320,15 @@ class TrainingArguments:
+     greater_is_better: Optional[bool] = field(
+         default=None, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
+     )
++    num_warmup_iters: int = field(default=10, metadata={"help": "Warmup steps for evaluation benchmarking."})
++    eval_iters: int = field(default=0, metadata={"help": "steps for evaluation benchmarking."})
++    profile: bool = field(default=False, metadata={"help": "Doing profile on cpu."})
++    mkldnn: bool = field(default=False, metadata={"help": "Use Intel IPEX."})
++    jit: bool = field(default=False, metadata={"help": "Use jit optimize to do optimization."})
++    channels_last: int = field(default=0, metadata={"help": "NHWC"})
++    precision: str = field(default='float32', metadata={"help": "float32, bfloat16"})
++
++
+ 
+     def __post_init__(self):
+         if self.disable_tqdm is None:

@@ -1,0 +1,596 @@
+diff --git a/a01_FastText/old_single_label/p5_fastTextB_train.py b/a01_FastText/old_single_label/p5_fastTextB_train.py
+index cd86442..8f3deae 100644
+--- a/a01_FastText/old_single_label/p5_fastTextB_train.py
++++ b/a01_FastText/old_single_label/p5_fastTextB_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from p5_fastTextB_model import fastTextB as fastText
+diff --git a/a02_TextCNN/__pycache__/p7_TextCNN_model.cpython-36.pyc b/a02_TextCNN/__pycache__/p7_TextCNN_model.cpython-36.pyc
+index ef4d81a..3bf7a05 100644
+Binary files a/a02_TextCNN/__pycache__/p7_TextCNN_model.cpython-36.pyc and b/a02_TextCNN/__pycache__/p7_TextCNN_model.cpython-36.pyc differ
+diff --git a/a02_TextCNN/p7_TextCNN_train.py b/a02_TextCNN/p7_TextCNN_train.py
+index bd2dc1c..71dfebb 100644
+--- a/a02_TextCNN/p7_TextCNN_train.py
++++ b/a02_TextCNN/p7_TextCNN_train.py
+@@ -93,6 +93,7 @@ def main(_):
+                 if not FLAGS.multi_label_flag:
+                     feed_dict[textCNN.input_y] = trainY[start:end]
+                 else:
++                    print("textCNN.input_y_multilabel:",trainY[start:end])
+                     feed_dict[textCNN.input_y_multilabel]=trainY[start:end]
+                 curr_loss,lr,_=sess.run([textCNN.loss_val,textCNN.learning_rate,textCNN.train_op],feed_dict)
+                 loss,counter=loss+curr_loss,counter+1
+diff --git a/a03_TextRNN/p8_TextRNN_train.py b/a03_TextRNN/p8_TextRNN_train.py
+index 304960e..988f590 100644
+--- a/a03_TextRNN/p8_TextRNN_train.py
++++ b/a03_TextRNN/p8_TextRNN_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from p8_TextRNN_model import TextRNN
+@@ -12,6 +12,7 @@ from tflearn.data_utils import pad_sequences #to_categorical
+ import os
+ import word2vec
+ import pickle
++tf.reset_default_graph()
+ 
+ #configuration
+ FLAGS=tf.app.flags.FLAGS
+@@ -27,17 +28,28 @@ tf.app.flags.DEFINE_boolean("is_training",True,"is traning.true:tranining,false:
+ tf.app.flags.DEFINE_integer("num_epochs",60,"embedding size")
+ tf.app.flags.DEFINE_integer("validate_every", 1, "Validate every validate_every epochs.") #每10轮做一次验证
+ tf.app.flags.DEFINE_boolean("use_embedding",True,"whether to use embedding or not.")
+-tf.app.flags.DEFINE_string("traning_data_path","train-zhihu4-only-title-all.txt","path of traning data.") #train-zhihu4-only-title-all.txt===>training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
+-tf.app.flags.DEFINE_string("word2vec_model_path","zhihu-word2vec.bin-100","word2vec's vocabulary and vectors")
++tf.app.flags.DEFINE_string("traning_data_path","../dataset/train-zhihu4-only-title-all.txt","path of traning data.") #train-zhihu4-only-title-all.txt===>training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
++tf.app.flags.DEFINE_string("word2vec_model_path","../dataset/zhihu-word2vec-title-desc.bin-100.txt","word2vec's vocabulary and vectors")
++# tf.app.flags.DEFINE_string("word2vec_model_path","zhihu-word2vec.bin-100","word2vec's vocabulary and vectors")
++
++# tf.app.flags.DEFINE_string("cache_file_h5py","../data/ieee_zhihu_cup/data.h5","path of training/validation/test data.") #../data/sample_multiple_label.txt
++# tf.app.flags.DEFINE_string("cache_file_pickle","../data/ieee_zhihu_cup/vocab_label.pik","path of vocabulary and label files") #../data/sample_multiple_label.txt
++# tf.app.flags.DEFINE_string("cache_path","../data/ieee_zhihu_cup/vocab_label.pik","path of vocabulary and label files") #../data/sample_multiple_label.txt
++
++
+ #1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ def main(_):
+     #1.load data(X:list of lint,y:int).
+-    #if os.path.exists(FLAGS.cache_path):  # 如果文件系统中存在，那么加载故事（词汇表索引化的）
++    # if os.path.exists(FLAGS.cache_path):  # 如果文件系统中存在，那么加载故事（词汇表索引化的）
+     #    with open(FLAGS.cache_path, 'r') as data_f:
+     #        trainX, trainY, testX, testY, vocabulary_index2word=pickle.load(data_f)
+     #        vocab_size=len(vocabulary_index2word)
+-    #else:
++
++    # word2index, label2index, trainX, trainY, vaildX, vaildY, testX, testY=load_data(FLAGS.cache_file_h5py, FLAGS.cache_file_pickle)
++    # vocab_size = len(word2index);print("cnn_model.vocab_size:",vocab_size);num_classes=len(label2index);print("num_classes:",num_classes)
++    # else:
+     if 1==1:
++        
+         #1.  get vocabulary of X and label.
+         trainX, trainY, testX, testY = None, None, None, None
+         vocabulary_word2index, vocabulary_index2word = create_voabulary(simple='simple',word2vec_model_path=FLAGS.word2vec_model_path,name_scope="rnn")
+@@ -60,13 +72,14 @@ def main(_):
+         print("end padding & transform to one hot...")
+     #2.create session.
+     config=tf.ConfigProto()
+-    config.gpu_options.allow_growth=True
++    config.gpu_options.allow_growth=False
+     with tf.Session(config=config) as sess:
+         #Instantiate Model
+         textRNN=TextRNN(FLAGS.num_classes, FLAGS.learning_rate, FLAGS.batch_size, FLAGS.decay_steps, FLAGS.decay_rate, FLAGS.sequence_length,
+         vocab_size, FLAGS.embed_size, FLAGS.is_training)
+         #Initialize Save
+         saver=tf.train.Saver()
++        print("88888888888888888888")
+         if os.path.exists(FLAGS.ckpt_dir+"checkpoint"):
+             print("Restoring Variables from Checkpoint for rnn model.")
+             saver.restore(sess,tf.train.latest_checkpoint(FLAGS.ckpt_dir))
+diff --git a/a04_TextRCNN/p71_TextRCNN_train.py b/a04_TextRCNN/p71_TextRCNN_train.py
+index 3103484..ba4c321 100644
+--- a/a04_TextRCNN/p71_TextRCNN_train.py
++++ b/a04_TextRCNN/p71_TextRCNN_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from p71_TextRCNN_mode2 import TextRCNN
+@@ -17,7 +17,7 @@ import pickle
+ FLAGS=tf.app.flags.FLAGS
+ tf.app.flags.DEFINE_integer("num_classes",1999,"number of label")
+ tf.app.flags.DEFINE_float("learning_rate",0.01,"learning rate")
+-tf.app.flags.DEFINE_integer("batch_size", 512, "Batch size for training/evaluating.") #批处理的大小 32-->128
++tf.app.flags.DEFINE_integer("batch_size", 1, "Batch size for training/evaluating.") #批处理的大小 32-->128
+ tf.app.flags.DEFINE_integer("decay_steps", 6000, "how many steps before decay learning rate.") #6000批处理的大小 32-->128
+ tf.app.flags.DEFINE_float("decay_rate", 0.9, "Rate of decay for learning rate.") #0.65一次衰减多少
+ tf.app.flags.DEFINE_string("ckpt_dir","text_rcnn_title_desc_checkpoint2/","checkpoint location for the model")
+@@ -29,17 +29,18 @@ tf.app.flags.DEFINE_integer("validate_every", 1, "Validate every validate_every
+ tf.app.flags.DEFINE_boolean("use_embedding",True,"whether to use embedding or not.")
+ #tf.app.flags.DEFINE_string("cache_path","text_cnn_checkpoint/data_cache.pik","checkpoint location for the model")
+ #train-zhihu4-only-title-all.txt
+-tf.app.flags.DEFINE_string("traning_data_path","train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
+-tf.app.flags.DEFINE_string("word2vec_model_path","zhihu-word2vec-title-desc.bin-100","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
+-tf.app.flags.DEFINE_boolean("multi_label_flag",True,"use multi label or single label.")
++tf.app.flags.DEFINE_string("traning_data_path","../dataset/train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
++tf.app.flags.DEFINE_string("word2vec_model_path","../dataset/zhihu-word2vec-title-desc.bin-100.txt","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
++tf.app.flags.DEFINE_boolean("multi_label_flag",False,"use multi label or single label.")
++# tf.app.flags.DEFINE_string("cache_path","../data/ieee_zhihu_cup/vocab_label.pik","path of vocabulary and label files") #../data/sample_multiple_label.txt
+ #1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ def main(_):
+-    #1.load data(X:list of lint,y:int).
+-    #if os.path.exists(FLAGS.cache_path):  # 如果文件系统中存在，那么加载故事（词汇表索引化的）
++    # 1.load data(X:list of lint,y:int).
++    # if os.path.exists(FLAGS.cache_path):  # 如果文件系统中存在，那么加载故事（词汇表索引化的）
+     #    with open(FLAGS.cache_path, 'r') as data_f:
+     #        trainX, trainY, testX, testY, vocabulary_index2word=pickle.load(data_f)
+     #        vocab_size=len(vocabulary_index2word)
+-    #else:
++    # else:
+     if 1==1:
+         trainX, trainY, testX, testY = None, None, None, None
+         vocabulary_word2index, vocabulary_index2word = create_voabulary(word2vec_model_path=FLAGS.word2vec_model_path,name_scope="rcnn") #simple='simple'
+@@ -47,7 +48,7 @@ def main(_):
+         print("cnn_model.vocab_size:",vocab_size)
+         vocabulary_word2index_label,vocabulary_index2word_label = create_voabulary_label(name_scope="rcnn")
+         if FLAGS.multi_label_flag:
+-            FLAGS.traning_data_path='training-data/train-zhihu6-title-desc.txt' #test-zhihu5-only-title-multilabel.txt
++            FLAGS.traning_data_path='../dataset/train-zhihu6-title-desc.txt' #test-zhihu5-only-title-multilabel.txt
+         train, test, _ = load_data_multilabel_new(vocabulary_word2index, vocabulary_word2index_label,multi_label_flag=FLAGS.multi_label_flag,traning_data_path=FLAGS.traning_data_path) #,traning_data_path=FLAGS.traning_data_path
+         trainX, trainY = train
+         testX, testY = test
+diff --git a/a05_HierarchicalAttentionNetwork/p1_HierarchicalAttention_train.py b/a05_HierarchicalAttentionNetwork/p1_HierarchicalAttention_train.py
+index 7422076..18c831d 100644
+--- a/a05_HierarchicalAttentionNetwork/p1_HierarchicalAttention_train.py
++++ b/a05_HierarchicalAttentionNetwork/p1_HierarchicalAttention_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from p1_HierarchicalAttention_model import HierarchicalAttention
+@@ -22,7 +22,8 @@ tf.app.flags.DEFINE_float("learning_rate",0.01,"learning rate") #TODO 0.01
+ tf.app.flags.DEFINE_integer("batch_size", 512, "Batch size for training/evaluating.") #批处理的大小 32-->128 #TODO
+ tf.app.flags.DEFINE_integer("decay_steps", 6000, "how many steps before decay learning rate.") #6000批处理的大小 32-->128
+ tf.app.flags.DEFINE_float("decay_rate", 1.0, "Rate of decay for learning rate.") #0.87一次衰减多少
+-tf.app.flags.DEFINE_string("ckpt_dir","checkpoint_hier_atten_title/text_hier_atten_title_desc_checkpoint_MHA/","checkpoint location for the model")
++# tf.app.flags.DEFINE_string("ckpt_dir","checkpoint_hier_atten_title/text_hier_atten_title_desc_checkpoint_MHA/","checkpoint location for the model")
++tf.app.flags.DEFINE_string("ckpt_dir","checkpoint_hier_atten_title/","checkpoint location for the model")
+ tf.app.flags.DEFINE_integer("sequence_length",100,"max sentence length")
+ tf.app.flags.DEFINE_integer("embed_size",100,"embedding size")
+ tf.app.flags.DEFINE_boolean("is_training",True,"is traning.true:tranining,false:testing/inference")
+@@ -32,9 +33,9 @@ tf.app.flags.DEFINE_integer("validate_step", 1000, "how many step to validate.")
+ tf.app.flags.DEFINE_boolean("use_embedding",True,"whether to use embedding or not.")
+ #tf.app.flags.DEFINE_string("cache_path","text_cnn_checkpoint/data_cache.pik","checkpoint location for the model")
+ #train-zhihu4-only-title-all.txt
+-tf.app.flags.DEFINE_string("traning_data_path","train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
+-tf.app.flags.DEFINE_string("word2vec_model_path","zhihu-word2vec-title-desc.bin-100","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
+-tf.app.flags.DEFINE_boolean("multi_label_flag",True,"use multi label or single label.")
++tf.app.flags.DEFINE_string("traning_data_path","../dataset/train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
++tf.app.flags.DEFINE_string("word2vec_model_path","../dataset/zhihu-word2vec-title-desc.bin-100.txt","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
++tf.app.flags.DEFINE_boolean("multi_label_flag",False,"use multi label or single label.")
+ tf.app.flags.DEFINE_integer("num_sentences", 4, "number of sentences in the document") #每10轮做一次验证
+ tf.app.flags.DEFINE_integer("hidden_size",100,"hidden size")
+ 
+@@ -53,7 +54,7 @@ def main(_):
+         print("cnn_model.vocab_size:",vocab_size)
+         vocabulary_word2index_label,vocabulary_index2word_label = create_voabulary_label(name_scope="hierAtten")
+         if FLAGS.multi_label_flag:
+-            FLAGS.traning_data_path='training-data/train-zhihu6-title-desc.txt' #test-zhihu5-only-title-multilabel.txt
++            FLAGS.traning_data_path='../dataset/train-zhihu6-title-desc.txt' #test-zhihu5-only-title-multilabel.txt
+         train, test, _ = load_data_multilabel_new(vocabulary_word2index, vocabulary_word2index_label,multi_label_flag=FLAGS.multi_label_flag,traning_data_path=FLAGS.traning_data_path) #,traning_data_path=FLAGS.traning_data_path
+         trainX, trainY = train
+         testX, testY = test
+@@ -75,6 +76,7 @@ def main(_):
+         #hidden_size,is_training
+         model=HierarchicalAttention(FLAGS.num_classes, FLAGS.learning_rate, FLAGS.batch_size, FLAGS.decay_steps, FLAGS.decay_rate,FLAGS.sequence_length,
+                                        FLAGS.num_sentences,vocab_size,FLAGS.embed_size,FLAGS.hidden_size,FLAGS.is_training,multi_label_flag=FLAGS.multi_label_flag)
++
+         #Initialize Save
+         saver=tf.train.Saver()
+         if os.path.exists(FLAGS.ckpt_dir+"checkpoint"):
+diff --git a/a06_Seq2seqWithAttention/a1_seq2seq_attention_train.py b/a06_Seq2seqWithAttention/a1_seq2seq_attention_train.py
+index 2d05225..f26f6f5 100644
+--- a/a06_Seq2seqWithAttention/a1_seq2seq_attention_train.py
++++ b/a06_Seq2seqWithAttention/a1_seq2seq_attention_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from a1_seq2seq_attention_model import  seq2seq_attention_model
+@@ -12,7 +12,7 @@ from tflearn.data_utils import to_categorical, pad_sequences
+ import os,math
+ import word2vec
+ import pickle
+-
++tf.reset_default_graph()
+ #configuration
+ FLAGS=tf.app.flags.FLAGS
+ tf.app.flags.DEFINE_integer("num_classes",1999+3,"number of label") #3 ADDITIONAL TOKEN: _GO,_END,_PAD
+@@ -20,18 +20,18 @@ tf.app.flags.DEFINE_float("learning_rate",0.01,"learning rate")
+ tf.app.flags.DEFINE_integer("batch_size", 512, "Batch size for training/evaluating.") #批处理的大小 32-->128
+ tf.app.flags.DEFINE_integer("decay_steps", 6000, "how many steps before decay learning rate.") #6000批处理的大小 32-->128
+ tf.app.flags.DEFINE_float("decay_rate", 1.0, "Rate of decay for learning rate.") #0.87一次衰减多少
+-tf.app.flags.DEFINE_string("ckpt_dir","checkpoint_seq2seq_attention/seq2seq_attention1/","checkpoint location for the model")
++tf.app.flags.DEFINE_string("ckpt_dir","checkpoint_seq2seq_attention/","checkpoint location for the model")
+ tf.app.flags.DEFINE_integer("sequence_length",100,"max sentence length")
+ tf.app.flags.DEFINE_integer("embed_size",100,"embedding size")
+ tf.app.flags.DEFINE_boolean("is_training",True,"is traning.true:tranining,false:testing/inference")
+-tf.app.flags.DEFINE_integer("num_epochs",10,"number of epochs to run.")
++tf.app.flags.DEFINE_integer("num_epochs",1,"number of epochs to run.")
+ tf.app.flags.DEFINE_integer("validate_every", 1, "Validate every validate_every epochs.") #每10轮做一次验证
+ tf.app.flags.DEFINE_integer("validate_step", 1000, "how many step to validate.") #1500做一次检验
+ tf.app.flags.DEFINE_boolean("use_embedding",True,"whether to use embedding or not.")
+ #tf.app.flags.DEFINE_string("cache_path","text_cnn_checkpoint/data_cache.pik","checkpoint location for the model")
+ #train-zhihu4-only-title-all.txt
+-tf.app.flags.DEFINE_string("traning_data_path","train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
+-tf.app.flags.DEFINE_string("word2vec_model_path","zhihu-word2vec-title-desc.bin-100","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
++tf.app.flags.DEFINE_string("traning_data_path","../dataset/train-zhihu6-title-desc.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
++tf.app.flags.DEFINE_string("word2vec_model_path","../dataset/zhihu-word2vec-title-desc.bin-100.txt","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
+ tf.app.flags.DEFINE_boolean("multi_label_flag",True,"use multi label or single label.") #set this false. becase we are using it is a sequence of token here.
+ tf.app.flags.DEFINE_integer("num_sentences", 4, "number of sentences in the document") #每10轮做一次验证
+ tf.app.flags.DEFINE_integer("hidden_size",100,"hidden size")
+@@ -52,7 +52,9 @@ def main(_):
+         print("seq2seq_attention.vocab_size:",vocab_size)
+         vocabulary_word2index_label,vocabulary_index2word_label = create_voabulary_label(name_scope="seq2seq_attention",use_seq2seq=True)
+         if FLAGS.multi_label_flag:
+-            FLAGS.traning_data_path='training-data/train-zhihu6-title-desc.txt' #train
++            # FLAGS.traning_data_path='../dataset/train-zhihu4-only-title-all.txt' #test-zhihu5-only-title-multilabel.txt
++            # FLAGS.traning_data_path='../dataset/train-zhihu6-title-desc.txt' #train train-zhihu-title-desc-multiple-label-200k-v6.txt
++            FLAGS.traning_data_path='../dataset/test-zhihu6-title-desc.txt'
+         train,test,_=load_data_multilabel_new(vocabulary_word2index,vocabulary_word2index_label,multi_label_flag=FLAGS.multi_label_flag,use_seq2seq=True,traning_data_path=FLAGS.traning_data_path)
+         trainX, trainY,train_decoder_input = train
+         testX, testY,test_decoder_input = test
+@@ -70,7 +72,7 @@ def main(_):
+         print("end padding & transform to one hot...")
+     #2.create session.
+     config=tf.ConfigProto()
+-    config.gpu_options.allow_growth=True
++    config.gpu_options.allow_growth=False
+     with tf.Session(config=config) as sess:
+         #Instantiate Model
+         #num_classes, learning_rate, batch_size, decay_steps, decay_rate,sequence_length,num_sentences,vocab_size,embed_size,
+@@ -103,8 +105,10 @@ def main(_):
+                 if not FLAGS.multi_label_flag:
+                     feed_dict[model.input_y] = trainY[start:end]
+                 else:
++                    # print("trainY[start:end]:",trainY[start:end])
+                     feed_dict[model.input_y_label]=trainY[start:end]
+                     feed_dict[model.decoder_input] = train_decoder_input[start:end]
++                    # exit()
+                 curr_loss,curr_acc,_=sess.run([model.loss_val,model.accuracy,model.train_op],feed_dict) #curr_acc--->TextCNN.accuracy
+                 loss,counter,acc=loss+curr_loss,counter+1,acc+curr_acc
+                 if counter %50==0:
+diff --git a/a08_EntityNetwork/a3_train.py b/a08_EntityNetwork/a3_train.py
+index 775795b..ea88a80 100644
+--- a/a08_EntityNetwork/a3_train.py
++++ b/a08_EntityNetwork/a3_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from a3_entity_network import EntityNetwork
+@@ -13,6 +13,7 @@ from tflearn.data_utils import to_categorical, pad_sequences
+ import os,math
+ import word2vec
+ import pickle
++tf.reset_default_graph()
+ 
+ #configuration
+ FLAGS=tf.app.flags.FLAGS
+@@ -25,14 +26,14 @@ tf.app.flags.DEFINE_string("ckpt_dir","../checkpoint_entity_network2/","checkpoi
+ tf.app.flags.DEFINE_integer("sequence_length",50,"max sentence length") #100
+ tf.app.flags.DEFINE_integer("embed_size",100,"embedding size")
+ tf.app.flags.DEFINE_boolean("is_training",True,"is traning.true:tranining,false:testing/inference")
+-tf.app.flags.DEFINE_integer("num_epochs",10,"number of epochs to run.")
++tf.app.flags.DEFINE_integer("num_epochs",2,"number of epochs to run.")
+ tf.app.flags.DEFINE_integer("validate_every", 1, "Validate every validate_every epochs.") #每10轮做一次验证
+ tf.app.flags.DEFINE_integer("validate_step", 2000, "how many step to validate.") #1500做一次检验
+ tf.app.flags.DEFINE_boolean("use_embedding",True,"whether to use embedding or not.")
+ #tf.app.flags.DEFINE_string("cache_path","text_cnn_checkpoint/data_cache.pik","checkpoint location for the model")
+ #train-zhihu4-only-title-all.txt
+-tf.app.flags.DEFINE_string("traning_data_path","../train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
+-tf.app.flags.DEFINE_string("word2vec_model_path","../zhihu-word2vec-title-desc.bin-100","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
++tf.app.flags.DEFINE_string("traning_data_path","../dataset/train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
++tf.app.flags.DEFINE_string("word2vec_model_path","../dataset/zhihu-word2vec-title-desc.bin-100.txt","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
+ tf.app.flags.DEFINE_boolean("multi_label_flag",True,"use multi label or single label.") #set this false. becase we are using it is a sequence of token here.
+ tf.app.flags.DEFINE_integer("hidden_size",100,"hidden size")
+ #tf.app.flags.DEFINE_float("l2_lambda", 0.0001, "l2 regularization")
+@@ -55,7 +56,7 @@ def main(_):
+         print("entity_network.vocab_size:",vocab_size)
+         vocabulary_word2index_label,vocabulary_index2word_label = create_voabulary_label(name_scope="entity_networks")
+         if FLAGS.multi_label_flag:
+-            FLAGS.traning_data_path='../training-data/test-zhihu6-title-desc.txt' #train
++            FLAGS.traning_data_path='../dataset/test-zhihu6-title-desc.txt' #train
+         train,test,_=load_data_multilabel_new(vocabulary_word2index,vocabulary_word2index_label,multi_label_flag=FLAGS.multi_label_flag,
+                                               traning_data_path=FLAGS.traning_data_path)
+         trainX, trainY = train
+diff --git a/a08_EntityNetwork/data_util_zhihu.py b/a08_EntityNetwork/data_util_zhihu.py
+index d5e3ca6..789c4db 100644
+--- a/a08_EntityNetwork/data_util_zhihu.py
++++ b/a08_EntityNetwork/data_util_zhihu.py
+@@ -10,18 +10,20 @@ from tflearn.data_utils import pad_sequences
+ _GO="_GO"
+ _END="_END"
+ _PAD="_PAD"
+-def create_voabulary(simple=None,word2vec_model_path='../zhihu-word2vec-title-desc.bin-100',name_scope=''): #zhihu-word2vec-multilabel.bin-100
+-    cache_path ='../cache_vocabulary_label_pik/'+ name_scope + "_word_voabulary.pik"
+-    print("cache_path:",cache_path,"file_exists:",os.path.exists(cache_path))
+-    if os.path.exists(cache_path):#如果缓存文件存在，则直接读取
+-        with open(cache_path, 'r') as data_f:
+-            vocabulary_word2index, vocabulary_index2word=pickle.load(data_f)
+-            return vocabulary_word2index, vocabulary_index2word
+-    else:
++def create_voabulary(simple=None,word2vec_model_path='../dataset/zhihu-word2vec-title-desc.bin-100',name_scope=''): #zhihu-word2vec-multilabel.bin-100
++    # cache_path ='../cache_vocabulary_label_pik/'+ name_scope + "_word_voabulary.pik"
++    # print("cache_path:",cache_path,"file_exists:",os.path.exists(cache_path))
++    # if os.path.exists(cache_path):#如果缓存文件存在，则直接读取
++    #     with open(cache_path, 'r') as data_f:
++    #         vocabulary_word2index, vocabulary_index2word=pickle.load(data_f)
++    #         return vocabulary_word2index, vocabulary_index2word
++    # else:
++    if 1==1:
+         vocabulary_word2index={}
+         vocabulary_index2word={}
+         if simple is not None:
+-            word2vec_model_path='../zhihu-word2vec.bin-100'
++            # word2vec_model_path='../zhihu-word2vec.bin-100'
++            word2vec_model_path='../dataset/zhihu-word2vec-title-desc.bin-100.txt'
+         print("create vocabulary. word2vec_model_path:",word2vec_model_path)
+         model=word2vec.load(word2vec_model_path,kind='bin')
+         vocabulary_word2index['PAD_ID']=0
+@@ -36,20 +38,21 @@ def create_voabulary(simple=None,word2vec_model_path='../zhihu-word2vec-title-de
+             vocabulary_index2word[i+1+special_index]=vocab
+ 
+         #save to file system if vocabulary of words is not exists.
+-        if not os.path.exists(cache_path): #如果不存在写到缓存文件中
+-            with open(cache_path, 'a') as data_f:
+-                pickle.dump((vocabulary_word2index,vocabulary_index2word), data_f)
++        # if not os.path.exists(cache_path): #如果不存在写到缓存文件中
++        #     with open(cache_path, 'a') as data_f:
++        #         pickle.dump((vocabulary_word2index,vocabulary_index2word), data_f)
+     return vocabulary_word2index,vocabulary_index2word
+ 
+ # create vocabulary of lables. label is sorted. 1 is high frequency, 2 is low frequency.
+-def create_voabulary_label(voabulary_label='train-zhihu4-only-title-all.txt',name_scope='',use_seq2seq=False):#'train-zhihu.txt'
+-    print("create_voabulary_label_sorted.started.traning_data_path:",voabulary_label)
+-    cache_path ='../cache_vocabulary_label_pik/'+ name_scope + "_label_voabulary.pik"
+-    if os.path.exists(cache_path):#如果缓存文件存在，则直接读取
+-        with open(cache_path, 'r') as data_f:
+-            vocabulary_word2index_label, vocabulary_index2word_label=pickle.load(data_f)
+-            return vocabulary_word2index_label, vocabulary_index2word_label
+-    else:
++def create_voabulary_label(voabulary_label='../dataset/train-zhihu4-only-title-all.txt',name_scope='',use_seq2seq=False):#'train-zhihu.txt'
++    # print("create_voabulary_label_sorted.started.traning_data_path:",voabulary_label)
++    # cache_path ='../cache_vocabulary_label_pik/'+ name_scope + "_label_voabulary.pik"
++    # if os.path.exists(cache_path):#如果缓存文件存在，则直接读取
++    #     with open(cache_path, 'r') as data_f:
++    #         vocabulary_word2index_label, vocabulary_index2word_label=pickle.load(data_f)
++    #         return vocabulary_word2index_label, vocabulary_index2word_label
++    # else:
++    if 1==1:
+         zhihu_f_train = codecs.open(voabulary_label, 'r', 'utf8')
+         lines=zhihu_f_train.readlines()
+         count=0
+@@ -86,9 +89,9 @@ def create_voabulary_label(voabulary_label='train-zhihu4-only-title-all.txt',nam
+         print("count top10:",countt)
+ 
+         #save to file system if vocabulary of words is not exists.
+-        if not os.path.exists(cache_path): #如果不存在写到缓存文件中
+-            with open(cache_path, 'a') as data_f:
+-                pickle.dump((vocabulary_word2index_label,vocabulary_index2word_label), data_f)
++        # if not os.path.exists(cache_path): #如果不存在写到缓存文件中
++        #     with open(cache_path, 'a') as data_f:
++        #         pickle.dump((vocabulary_word2index_label,vocabulary_index2word_label), data_f)
+     print("create_voabulary_label_sorted.ended.len of vocabulary_label:",len(vocabulary_index2word_label))
+     return vocabulary_word2index_label,vocabulary_index2word_label
+ 
+@@ -115,7 +118,7 @@ def create_voabulary_labelO():
+     return vocabulary_word2index_label,vocabulary_index2word_label
+ 
+ def load_data_multilabel_new(vocabulary_word2index,vocabulary_word2index_label,valid_portion=0.05,max_training_data=1000000,
+-                             traning_data_path='../train-zhihu4-only-title-all.txt',multi_label_flag=True,use_seq2seq=False,seq2seq_label_length=6):  # n_words=100000,
++                             traning_data_path='../dataset/train-zhihu4-only-title-all.txt',multi_label_flag=True,use_seq2seq=False,seq2seq_label_length=6):  # n_words=100000,
+     """
+     input: a file path
+     :return: train, test, valid. where train=(trainX, trainY). where
+diff --git a/a08_predict_ensemble.py b/a08_predict_ensemble.py
+index 24506ab..3febaa7 100644
+--- a/a08_predict_ensemble.py
++++ b/a08_predict_ensemble.py
+@@ -2,8 +2,8 @@
+ #prediction using multi-models. take out: create multiple graphs. each graph associate with a session. add logits of models.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.predict
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ import os
+diff --git a/a09_DynamicMemoryNet/a8_train.py b/a09_DynamicMemoryNet/a8_train.py
+index 6d26402..b91f7a6 100644
+--- a/a09_DynamicMemoryNet/a8_train.py
++++ b/a09_DynamicMemoryNet/a8_train.py
+@@ -2,8 +2,8 @@
+ #training the model.
+ #process--->1.load data(X:list of lint,y:int). 2.create session. 3.feed data. 4.training (5.validation) ,(6.prediction)
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ import tensorflow as tf
+ import numpy as np
+ from a8_dynamic_memory_network import DynamicMemoryNetwork
+@@ -13,6 +13,8 @@ from tflearn.data_utils import to_categorical, pad_sequences
+ import os,math
+ import word2vec
+ import pickle
++tf.reset_default_graph()
++
+ 
+ #configuration
+ FLAGS=tf.app.flags.FLAGS
+@@ -29,9 +31,9 @@ tf.app.flags.DEFINE_integer("num_epochs",16,"number of epochs to run.")
+ tf.app.flags.DEFINE_integer("validate_every", 1, "Validate every validate_every epochs.") #每10轮做一次验证
+ tf.app.flags.DEFINE_integer("validate_step", 2000, "how many step to validate.") #1500做一次检验
+ tf.app.flags.DEFINE_boolean("use_embedding",True,"whether to use embedding or not.")
+-tf.app.flags.DEFINE_string("traning_data_path","../train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
+-tf.app.flags.DEFINE_string("word2vec_model_path","../zhihu-word2vec-title-desc.bin-100","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
+-tf.app.flags.DEFINE_boolean("multi_label_flag",True,"use multi label or single label.") #set this false. becase we are using it is a sequence of token here.
++tf.app.flags.DEFINE_string("traning_data_path","../dataset/train-zhihu4-only-title-all.txt","path of traning data.") #O.K.train-zhihu4-only-title-all.txt-->training-data/test-zhihu4-only-title.txt--->'training-data/train-zhihu5-only-title-multilabel.txt'
++tf.app.flags.DEFINE_string("word2vec_model_path","../dataset/zhihu-word2vec-title-desc.bin-100.txt","word2vec's vocabulary and vectors") #zhihu-word2vec.bin-100-->zhihu-word2vec-multilabel-minicount15.bin-100
++tf.app.flags.DEFINE_boolean("multi_label_flag",False,"use multi label or single label.") #set this false. becase we are using it is a sequence of token here.
+ tf.app.flags.DEFINE_integer("hidden_size",100,"hidden size")
+ tf.app.flags.DEFINE_integer("story_length",1,"story length")
+ # you can do experiment by change below two hyperparameter, performance may be changed.
+@@ -56,7 +58,7 @@ def main(_):
+         print("dynamic_memory_network.vocab_size:",vocab_size)
+         vocabulary_word2index_label,vocabulary_index2word_label = create_voabulary_label(name_scope="dynamic_memory_network")
+         if FLAGS.multi_label_flag:
+-            FLAGS.traning_data_path='../training-data/train-zhihu6-title-desc.txt' #change this line if want to train in a small dataset. e.g. dataset from 'test-zhihu6-title-desc.txt'
++            FLAGS.traning_data_path='../dataset/train-zhihu6-title-desc.txt' #change this line if want to train in a small dataset. e.g. dataset from 'test-zhihu6-title-desc.txt'
+         train,test,_=load_data_multilabel_new(vocabulary_word2index,vocabulary_word2index_label,multi_label_flag=FLAGS.multi_label_flag,
+                                               traning_data_path=FLAGS.traning_data_path)
+         trainX, trainY = train
+diff --git a/aa1_data_util/1_process_zhihu.py b/aa1_data_util/1_process_zhihu.py
+index ecb15d9..6f71b20 100644
+--- a/aa1_data_util/1_process_zhihu.py
++++ b/aa1_data_util/1_process_zhihu.py
+@@ -10,7 +10,7 @@ import sys
+ import codecs
+ #1.################################################################################################################
+ print("process question_topic_train_set.txt,started...")
+-q_t='question_topic_train_set.txt'
++q_t='../data/ieee_zhihu_cup/question_topic_train_set3.txt'
+ q_t_file = codecs.open(q_t, 'r', 'utf8')
+ lines=q_t_file.readlines()
+ question_topic_dict={}
+@@ -35,7 +35,7 @@ print("process question_topic_train_set.txt,ended...")
+ #2.处理问题--得到问题ID：问题的表示，存成字典。proces question. for every question form a a list of string to reprensent it.
+ import codecs
+ print("process question started11...")
+-q='question_train_set.txt'
++q='../data/ieee_zhihu_cup/question_train_set3.txt'
+ q_file = codecs.open(q, 'r', 'utf8')
+ q_lines=q_file.readlines()
+ questionid_words_representation={}
+diff --git a/aa1_data_util/2_predict_zhihu_get_question_representation.py b/aa1_data_util/2_predict_zhihu_get_question_representation.py
+index 1858bba..9644e8c 100644
+--- a/aa1_data_util/2_predict_zhihu_get_question_representation.py
++++ b/aa1_data_util/2_predict_zhihu_get_question_representation.py
+@@ -1,7 +1,7 @@
+ # -*- coding: utf-8 -*-
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ 
+ #准备预测需要的数据.每一行作为问题的表示,写到文件中.
+ #prepreing prediction data. structure is just the same as training data.
+@@ -10,7 +10,7 @@ import codecs
+ print("proces question started. get question representation...")
+ target_filename='test-muying-forpredict-v4only-title.txt'
+ target_file_predict = codecs.open(target_filename, 'a', 'utf8')
+-qv='question_eval_set.txt'
++qv='../data/ieee_zhihu_cup/question_eval_set3.txt'
+ q_filev = codecs.open(qv, 'r', 'utf8')
+ q_linesv=q_filev.readlines()
+ questionid_words_representationv={}
+diff --git a/aa1_data_util/3_process_zhihu_question_topic_relation.py b/aa1_data_util/3_process_zhihu_question_topic_relation.py
+index 0201924..86ed3d0 100644
+--- a/aa1_data_util/3_process_zhihu_question_topic_relation.py
++++ b/aa1_data_util/3_process_zhihu_question_topic_relation.py
+@@ -1,13 +1,13 @@
+ # -*- coding: utf-8 -*-
+ import sys
+-reload(sys)
+-sys.setdefaultencoding('utf8')
++# reload(sys)
++# sys.setdefaultencoding('utf8')
+ #最终输出：x1=question_representation,x2=topic_representation,y=0(or 1)--->(x1,x2,y)
+ 
+ import codecs
+ #1.将问题ID和TOPIC对应关系保持到字典里.################################################################################
+ print("process question_topic_train_set.txt,started...")
+-q_t='question_topic_train_set.txt'
++q_t='../data/ieee_zhihu_cup/question_topic_train_set3.txt'
+ q_t_file = codecs.open(q_t, 'r', 'utf8')
+ lines=q_t_file.readlines()
+ question_topic_dict={}
+@@ -32,7 +32,7 @@ print("process question_topic_train_set.txt,ended...")
+ #2.处理问题--得到{问题ID：问题的表示}，存成字典。
+ import codecs
+ print("process question started11...")
+-q='question_train_set.txt'
++q='../data/ieee_zhihu_cup/question_train_set3.txt'
+ q_file = codecs.open(q, 'r', 'utf8')
+ q_lines=q_file.readlines()
+ questionid_words_representation={}
+@@ -58,7 +58,7 @@ print("proces question ended2...")
+ ###################################################################################################################
+ ###################################################################################################################
+ #3.处理topic，得到{TOPIC_ID,TOPIC的表示}，存成字典
+-topic_info_file_path='topic_info.txt'
++topic_info_file_path='../data/ieee_zhihu_cup/unused_current/topic_info.txt'
+ def read_topic_info():
+     f = codecs.open(topic_info_file_path, 'r', 'utf8')
+     lines=f.readlines()
+diff --git a/aa1_data_util/data_multi_label.txt b/aa1_data_util/data_multi_label.txt
+deleted file mode 100644
+index d0db2b4..0000000
+--- a/aa1_data_util/data_multi_label.txt
++++ /dev/null
+@@ -1,4 +0,0 @@
+-xxx1 xxx2 xxx3 xxx4 xxx5 __label__L11 L09 L03
+-xxx2 xxx2 xxx3 xxx4 xxx6 __label__L20 L11 L21 L24
+-xxx0 xxx2 xxx3 xxx4 xxx2 __label__L1  L2
+-xxx0 xxx1 xxx3 xxx4 xxx1 __label__L31 L2 L31
+diff --git a/aa1_data_util/data_single_label.txt b/aa1_data_util/data_single_label.txt
+deleted file mode 100644
+index a193066..0000000
+--- a/aa1_data_util/data_single_label.txt
++++ /dev/null
+@@ -1,3 +0,0 @@
+-xxx1 xxx2 xxx3 xxx4 xxx5 __label__L11
+-xxx2 xxx2 xxx3 xxx4 xxx6 __label__L20
+-xxx0 xxx2 xxx3 xxx4 xxx2 __label__L1

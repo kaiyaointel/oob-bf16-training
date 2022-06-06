@@ -1,0 +1,459 @@
+commit 1f86ca81cbab66dfc22e43bca5969f2c7b3c6ea6
+Author: limengfei <mengfei.li@intel.com>
+Date:   Fri Jul 16 21:42:25 2021 +0800
+
+    maskrcnn
+
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/data/build.py b/object_detection/pytorch/maskrcnn_benchmark/data/build.py
+index d3a96c2..d00ec6b 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/data/build.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/data/build.py
+@@ -125,7 +125,7 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
+         "of GPUs ({}) used.".format(images_per_batch, num_gpus)
+         images_per_gpu = images_per_batch // num_gpus
+         shuffle = False if not is_distributed else True
+-        num_iters = None
++        num_iters = cfg.SOLVER.MAX_ITER if cfg.SOLVER.MAX_ITER > 0 else None
+         start_iter = 0
+ 
+     if images_per_gpu > 1:
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/data/datasets/coco.py b/object_detection/pytorch/maskrcnn_benchmark/data/datasets/coco.py
+index f0c8c25..cbf132e 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/data/datasets/coco.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/data/datasets/coco.py
+@@ -61,7 +61,7 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
+             v: k for k, v in self.json_category_id_to_contiguous_id.items()
+         }
+         self.id_to_img_map = {k: v for k, v in enumerate(self.ids)}
+-        self.transforms = transforms
++        self._transforms = transforms
+ 
+     def __getitem__(self, idx):
+         img, anno = super(COCODataset, self).__getitem__(idx)
+@@ -90,8 +90,8 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
+ 
+         target = target.clip_to_image(remove_empty=True)
+ 
+-        if self.transforms is not None:
+-            img, target = self.transforms(img, target)
++        if self._transforms is not None:
++            img, target = self._transforms(img, target)
+ 
+         return img, target, idx
+ 
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/engine/inference.py b/object_detection/pytorch/maskrcnn_benchmark/engine/inference.py
+index 29576a5..3073b0d 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/engine/inference.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/engine/inference.py
+@@ -11,21 +11,75 @@ from maskrcnn_benchmark.data.datasets.evaluation import evaluate
+ from ..utils.comm import is_main_process
+ from ..utils.comm import all_gather
+ from ..utils.comm import synchronize
++from ..utils.timer import Timer, get_time_str
+ 
+ 
+-def compute_on_dataset(model, data_loader, device):
++def save_profile_result(filename, table):
++    import xlsxwriter
++    workbook = xlsxwriter.Workbook(filename)
++    worksheet = workbook.add_worksheet()
++    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
++            "CPU time avg", "Number of Calls"]
++    for j in range(len(keys)):
++        worksheet.write(0, j, keys[j])
++
++    lines = table.split("\n")
++    for i in range(3, len(lines)-4):
++        words = lines[i].split(" ")
++        j = 0
++        for word in words:
++            if not word == "":
++                worksheet.write(i-2, j, word)
++                j += 1
++    workbook.close()
++
++
++def compute_on_dataset(model, data_loader, device, nwhc, profile, arch, precision, timer=None):
+     model.eval()
+     results_dict = {}
+     cpu_device = torch.device("cpu")
+     for i, batch in enumerate(tqdm(data_loader)):
+         images, targets, image_ids = batch
+         images = images.to(device)
++        if nwhc == 1:
++            images_oob = images
++            images_oob = images_oob.to(memory_format=torch.channels_last)
++            images = images_oob
+         with torch.no_grad():
+-            output = model(images)
++            if timer:
++                timer.tic()
++            if profile:
++                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as prof:
++                    if precision == 'bfloat16':
++                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                            output = model(images)
++                    else:
++                        output = model(images)
++            else:
++                if precision == 'bfloat16':
++                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
++                        output = model(images)
++                else:
++                    output = model(images)
++            if timer:
++                if device.type == 'cuda':
++                    torch.cuda.synchronize()
++                timer.toc()
+             output = [o.to(cpu_device) for o in output]
+         results_dict.update(
+             {img_id: result for img_id, result in zip(image_ids, output)}
+         )
++    if profile:
++        import pathlib
++        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
++        if not os.path.exists(timeline_dir):
++            os.makedirs(timeline_dir)
++        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
++                    "maskrcnn" + str(i) + '-' + str(os.getpid()) + '.json'
++        print(timeline_file)
++        prof.export_chrome_trace(timeline_file)
++        # table_res = prof.key_averages().table(sort_by="cpu_time_total")
++        # self.save_profile_result(timeline_dir + torch.backends.quantized.engine + "_result_average.xlsx", table_res)
+     return results_dict
+ 
+ 
+@@ -60,7 +114,13 @@ def inference(
+         device="cuda",
+         expected_results=(),
+         expected_results_sigma_tol=4,
+-        output_folder=None,
++        warmup=0,
++        performance_only=False,
++        nwhc=0,
++        profile=False,
++        arch=None,
++        precision=None,
++        output_folder=None
+ ):
+     # convert to a torch.device for efficiency
+     device = torch.device(device)
+@@ -71,21 +131,41 @@ def inference(
+     )
+     logger = logging.getLogger("maskrcnn_benchmark.inference")
+     dataset = data_loader.dataset
++    if hasattr(data_loader.batch_sampler, "batch_sampler"):
++        batch_size = data_loader.batch_sampler.batch_sampler.batch_size
++    else:
++        batch_size = data_loader.batch_sampler.batch_size
+     logger.info("Start evaluation on {} dataset({} images).".format(dataset_name, len(dataset)))
+-    start_time = time.time()
+-    predictions = compute_on_dataset(model, data_loader, device)
++    total_timer = Timer()
++    inference_timer = Timer()
++    total_timer.tic()
++    predictions = compute_on_dataset(model, data_loader, device, nwhc, profile, arch, precision, inference_timer)
+     # wait for all processes to complete before measuring the time
+     synchronize()
+-    total_time = time.time() - start_time
+-    total_time_str = str(datetime.timedelta(seconds=total_time))
++    total_time = total_timer.toc(average=False)
++    total_time_str = get_time_str(total_time)
++    logger.info(
++        "Total Total time: {} ({} s / img per device, on {} devices)".format(
++            total_time_str,  total_time / batch_size * len(data_loader), num_devices
++        )
++    )
++    total_infer_time = get_time_str(inference_timer.total_time)
+     logger.info(
+-        "Total inference time: {} ({} s / img per device, on {} devices)".format(
+-            total_time_str, total_time * num_devices / len(dataset), num_devices
++        "Model inference latency: {} ({} s / img per device, on {} devices)".format(
++            total_infer_time,
++            inference_timer.average_time / batch_size,
++            num_devices,
++        )
++    )
++    logger.info(
++        "Model inference Throughput: {} imgs / s per device, on {} devices".format(
++            batch_size / inference_timer.average_time,
++            num_devices,
+         )
+     )
+ 
+     predictions = _accumulate_predictions_from_multiple_gpus(predictions)
+-    if not is_main_process():
++    if not is_main_process() or performance_only:
+         return
+ 
+     if output_folder:
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/layers/roi_align.py b/object_detection/pytorch/maskrcnn_benchmark/layers/roi_align.py
+index 170c8f1..67292ff 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/layers/roi_align.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/layers/roi_align.py
+@@ -55,9 +55,14 @@ class ROIAlign(nn.Module):
+         self.sampling_ratio = sampling_ratio
+ 
+     def forward(self, input, rois):
+-        return roi_align(
+-            input, rois, self.output_size, self.spatial_scale, self.sampling_ratio
+-        )
++        if 0: # input.device == torch.device("dpcpp"):
++            return roi_align(
++                input.to("cpu"), rois, self.output_size, self.spatial_scale, self.sampling_ratio
++            ).to("dpcpp")
++        else:
++            return roi_align(
++                input, rois, self.output_size, self.spatial_scale, self.sampling_ratio
++            )
+ 
+     def __repr__(self):
+         tmpstr = self.__class__.__name__ + "("
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/structures/boxlist_ops.py b/object_detection/pytorch/maskrcnn_benchmark/structures/boxlist_ops.py
+index dc51212..08a10ca 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/structures/boxlist_ops.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/structures/boxlist_ops.py
+@@ -24,7 +24,10 @@ def boxlist_nms(boxlist, nms_thresh, max_proposals=-1, score_field="scores"):
+     boxlist = boxlist.convert("xyxy")
+     boxes = boxlist.bbox
+     score = boxlist.get_field(score_field)
+-    keep = _box_nms(boxes, score, nms_thresh)
++    if 0: # boxes.device == torch.device("dpcpp"):
++        keep = _box_nms(boxes.to("cpu"), score.to("cpu"), nms_thresh).to("dpcpp")
++    else:
++        keep = _box_nms(boxes, score, nms_thresh)
+     if max_proposals > 0:
+         keep = keep[: max_proposals]
+     boxlist = boxlist[keep]
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/structures/segmentation_mask.py b/object_detection/pytorch/maskrcnn_benchmark/structures/segmentation_mask.py
+index ba1290b..621675c 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/structures/segmentation_mask.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/structures/segmentation_mask.py
+@@ -195,7 +195,8 @@ class SegmentationMask(object):
+         else:
+             # advanced indexing on a single dimension
+             selected_polygons = []
+-            if isinstance(item, torch.Tensor) and item.dtype == torch.uint8:
++            if isinstance(item, torch.Tensor) and \
++                    (item.dtype == torch.uint8 or item.dtype == torch.bool):
+                 item = item.nonzero()
+                 item = item.squeeze(1) if item.numel() > 0 else item
+                 item = item.tolist()
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/utils/c2_model_loading.py b/object_detection/pytorch/maskrcnn_benchmark/utils/c2_model_loading.py
+index b1b9996..940f87d 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/utils/c2_model_loading.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/utils/c2_model_loading.py
+@@ -132,7 +132,7 @@ def _rename_weights_for_resnet(weights, stage_names):
+ 
+ def _load_c2_pickled_weights(file_path):
+     with open(file_path, "rb") as f:
+-        if torch._six.PY3:
++        if 1: # torch._six.PY3:
+             data = pickle.load(f, encoding="latin1")
+         else:
+             data = pickle.load(f)
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/utils/imports.py b/object_detection/pytorch/maskrcnn_benchmark/utils/imports.py
+index 53e27e2..021fec3 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/utils/imports.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/utils/imports.py
+@@ -1,7 +1,7 @@
+ # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+ import torch
+ 
+-if torch._six.PY3:
++if 1: # torch._six.PY3:
+     import importlib
+     import importlib.util
+     import sys
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/utils/model_zoo.py b/object_detection/pytorch/maskrcnn_benchmark/utils/model_zoo.py
+index 7a0ebb3..94cf2f9 100644
+--- a/object_detection/pytorch/maskrcnn_benchmark/utils/model_zoo.py
++++ b/object_detection/pytorch/maskrcnn_benchmark/utils/model_zoo.py
+@@ -2,9 +2,12 @@
+ import os
+ import sys
+ 
+-from torch.utils.model_zoo import _download_url_to_file
+-from torch.utils.model_zoo import urlparse
+-from torch.utils.model_zoo import HASH_REGEX
++# from torch.utils.model_zoo import _download_url_to_file
++from torch.hub import download_url_to_file
++# from torch.utils.model_zoo import urlparse
++from torch.hub import urlparse
++# from torch.utils.model_zoo import HASH_REGEX
++from torch.hub import HASH_REGEX
+ 
+ from maskrcnn_benchmark.utils.comm import is_main_process
+ from maskrcnn_benchmark.utils.comm import synchronize
+@@ -51,6 +54,6 @@ def cache_url(url, model_dir=None, progress=True):
+             # if the hash_prefix is less than 6 characters
+             if len(hash_prefix) < 6:
+                 hash_prefix = None
+-        _download_url_to_file(url, cached_file, hash_prefix, progress=progress)
++        download_url_to_file(url, cached_file, hash_prefix, progress=progress)
+     synchronize()
+     return cached_file
+diff --git a/object_detection/pytorch/maskrcnn_benchmark/utils/timer.py b/object_detection/pytorch/maskrcnn_benchmark/utils/timer.py
+new file mode 100644
+index 0000000..935af1a
+--- /dev/null
++++ b/object_detection/pytorch/maskrcnn_benchmark/utils/timer.py
+@@ -0,0 +1,46 @@
++# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
++
++
++import time
++import datetime
++
++
++class Timer(object):
++    def __init__(self):
++        self.reset()
++
++    @property
++    def average_time(self):
++        return self.total_time / self.calls if self.calls > 0 else 0.0
++
++    def tic(self):
++        # using time.time instead of time.clock because time time.clock
++        # does not normalize for multithreading
++        self.start_time = time.time()
++
++    def toc(self, average=True):
++        self.add(time.time() - self.start_time)
++        if average:
++            return self.average_time
++        else:
++            return self.diff
++
++    def add(self, time_diff):
++        self.diff = time_diff
++        self.total_time += self.diff
++        self.calls += 1
++
++    def reset(self):
++        self.total_time = 0.0
++        self.calls = 0
++        self.start_time = 0.0
++        self.diff = 0.0
++
++    def avg_time_str(self):
++        time_str = str(datetime.timedelta(seconds=self.average_time))
++        return time_str
++
++
++def get_time_str(time_diff):
++    time_str = str(datetime.timedelta(seconds=time_diff))
++    return time_str
+diff --git a/object_detection/pytorch/tools/test_net.py b/object_detection/pytorch/tools/test_net.py
+index d0acd28..23c8426 100644
+--- a/object_detection/pytorch/tools/test_net.py
++++ b/object_detection/pytorch/tools/test_net.py
+@@ -33,6 +33,19 @@ def main():
+         default=None,
+         nargs=argparse.REMAINDER,
+     )
++    parser.add_argument('--profile_log', type=str, default=None,
++                        help="folder to save profiling result, None means don't profile")
++    parser.add_argument('--precision', type=str, default='float32',
++                        help="precision, 'float32' or 'bfloat16'")
++    parser.add_argument('--warmup', type=int, default=5,
++                        help='num of warmup')
++    parser.add_argument('--channels_last', type=int, default=1, help='use channels last format')
++    parser.add_argument('--ipex', action='store_true', default=False)
++    parser.add_argument('--arch', type=str, default=None)
++    # parser.add_argument('--jit', action='store_true', default=False,
++    #                     help='convert model to script model')
++    parser.add_argument('--profile', action='store_true',
++                        help='Trigger profile on current topology.')
+ 
+     args = parser.parse_args()
+ 
+@@ -55,16 +68,37 @@ def main():
+     logger.info("Using {} GPUs".format(num_gpus))
+     logger.info(cfg)
+ 
++    if args.precision == "bfloat16":
++        if args.ipex:
++            import intel_pytorch_extension as ipex
++            ipex.enable_auto_mixed_precision(mixed_dtype=torch.bfloat16)
++        elif args.channels_last:
++            pass
++            # with torch.amp.autocast(enabled=True, configure=torch.bfloat16, torch.no_grad(): 
++        print('Run model with bfloat16...')
++
++
+     logger.info("Collecting env info (might take some time)")
+     logger.info("\n" + collect_env_info())
+ 
+     model = build_detection_model(cfg)
+-    model.to(cfg.MODEL.DEVICE)
++    if args.channels_last:
++        model_oob = model
++        model_oob = model_oob.to(memory_format=torch.channels_last)
++        model = model_oob
++        nwhc = 1
++        print("---- Use channels last format.")
++    else:
++        model.to(cfg.MODEL.DEVICE)
++        nwhc = 0
+ 
+     output_dir = cfg.OUTPUT_DIR
+     checkpointer = DetectronCheckpointer(cfg, model, save_dir=output_dir)
+     _ = checkpointer.load(cfg.MODEL.WEIGHT)
+ 
++    # if args.jit:
++    #     model = torch.jit.script(model)
++
+     iou_types = ("bbox",)
+     if cfg.MODEL.MASK_ON:
+         iou_types = iou_types + ("segm",)
+@@ -82,13 +116,19 @@ def main():
+         inference(
+             model,
+             data_loader_val,
+-            dataset_name=dataset_name,
++            dataset_name,
+             iou_types=iou_types,
+             box_only=False if cfg.MODEL.RETINANET_ON else cfg.MODEL.RPN_ONLY,
+             device=cfg.MODEL.DEVICE,
+             expected_results=cfg.TEST.EXPECTED_RESULTS,
+             expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
+-            output_folder=output_folder,
++            warmup=args.warmup,
++            performance_only=cfg.PER_EPOCH_EVAL,
++            nwhc=args.channels_last,
++            profile=args.profile,
++            arch=args.arch,
++            precision=args.precision,
++            output_folder=output_folder
+         )
+         synchronize()
+ 
+diff --git a/object_detection/run_and_time.sh b/object_detection/run_and_time.sh
+index f852653..cdb39c8 100755
+--- a/object_detection/run_and_time.sh
++++ b/object_detection/run_and_time.sh
+@@ -1,11 +1,18 @@
+ #!/bin/bash
+ 
+-# Runs benchmark and reports time to convergence
++# Runs benchmark
+ 
+ pushd pytorch
++BATCH_SIZE=1
++ITERATIONS=10
++PERFORMANCE_ONLY=True
+ 
+-# Single GPU training
+-time python tools/train_mlperf.py --config-file "configs/e2e_mask_rcnn_R_50_FPN_1x.yaml" \
+-       SOLVER.IMS_PER_BATCH 2 TEST.IMS_PER_BATCH 1 SOLVER.MAX_ITER 720000 SOLVER.STEPS "(480000, 640000)" SOLVER.BASE_LR 0.0025
++# # Single GPU training
++# time python tools/train_mlperf.py --config-file "configs/e2e_mask_rcnn_R_50_FPN_1x.yaml" \
++#        SOLVER.IMS_PER_BATCH 2 TEST.IMS_PER_BATCH 1 SOLVER.MAX_ITER 720000 SOLVER.STEPS "(480000, 640000)" SOLVER.BASE_LR 0.0025
++
++time python tools/test_net.py --config-file "configs/e2e_mask_rcnn_R_50_FPN_1x.yaml" \
++        DATALOADER.NUM_WORKERS 1 SOLVER.MAX_ITER ${ITERATIONS} TEST.IMS_PER_BATCH $BATCH_SIZE MODEL.DEVICE dpcpp \
++        PER_EPOCH_EVAL $PERFORMANCE_ONLY
+        
+ popd

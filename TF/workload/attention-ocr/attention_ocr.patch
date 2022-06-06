@@ -1,0 +1,85 @@
+diff --git a/research/attention_ocr/python/demo_inference.py b/research/attention_ocr/python/demo_inference.py
+index d5fcf251..929f2a86 100644
+--- a/research/attention_ocr/python/demo_inference.py
++++ b/research/attention_ocr/python/demo_inference.py
+@@ -1,3 +1,4 @@
++# -*- coding: utf-8 -*
+ """A script to run inference on a set of image files.
+ 
+ NOTE #1: The Attention OCR model was trained only using FSNS train dataset and
+@@ -17,6 +18,7 @@ python demo_inference.py --batch_size=32 \
+ """
+ import numpy as np
+ import PIL.Image
++import time
+ 
+ import tensorflow as tf
+ from tensorflow.python.platform import flags
+@@ -32,8 +34,10 @@ common_flags.define()
+ # e.g. ./datasets/data/fsns/temp/fsns_train_%02d.png
+ flags.DEFINE_string('image_path_pattern', '',
+                     'A file pattern with a placeholder for the image index.')
+-
+-
++flags.DEFINE_integer('num_warmup', 50, 'Num of warmup.')
++flags.DEFINE_integer('eval_batch_size', 1, 'batch_size.')
++flags.DEFINE_integer('num_iter', 500, 'Num of total benchmark samples.')
++     
+ def get_dataset_image_size(dataset_name):
+   # Ideally this info should be exposed through the dataset interface itself.
+   # But currently it is not available by other means.
+@@ -49,7 +53,8 @@ def load_images(file_pattern, batch_size, dataset_name):
+   for i in range(batch_size):
+     path = file_pattern % i
+     print("Reading %s" % path)
+-    pil_image = PIL.Image.open(tf.gfile.GFile(path, 'rb'))
++    pil_image = PIL.Image.open(tf.gfile.GFile(path,'rb'))
++    pil_image=pil_image.resize((600,150),PIL.Image.ANTIALIAS)
+     images_actual_data[i, ...] = np.asarray(pil_image)
+   return images_actual_data
+ 
+@@ -73,24 +78,35 @@ def create_model(batch_size, dataset_name):
+ def run(checkpoint, batch_size, dataset_name, image_path_pattern):
+   images_placeholder, endpoints = create_model(batch_size,
+                                                dataset_name)
+-  images_data = load_images(image_path_pattern, batch_size,
+-                            dataset_name)
++  #images_data = load_images(image_path_pattern, batch_size,
++  #                          dataset_name)
++  image_data = np.repeat(np.random.randn(150, 600, 3).astype('float32')[np.newaxis, :], batch_size, axis=0)
++  dummy_dataset = [image_data] * FLAGS.num_iter
++  total_time = 0
++  total_samples = 0
+   session_creator = monitored_session.ChiefSessionCreator(
+     checkpoint_filename_with_path=checkpoint)
+   with monitored_session.MonitoredSession(
+       session_creator=session_creator) as sess:
+-    predictions = sess.run(endpoints.predicted_text,
+-                           feed_dict={images_placeholder: images_data})
+-  return [pr_bytes.decode('utf-8') for pr_bytes in predictions.tolist()]
++    
++    for index, data in enumerate(dummy_dataset): 
++        tic = time.time()
++        predictions = sess.run(endpoints.predicted_text,
++                               feed_dict={images_placeholder: data})
++        if index > FLAGS.num_warmup:
++          total_time += time.time() - tic
++          total_samples += data.shape[0]
++  print("Total samples: {}\n Throughput: {:.2f} fps".format(total_samples, total_samples/total_time)) 
++  
++  return predictions.tolist()
+ 
+ 
+ def main(_):
+   print("Predicted strings:")
+-  predictions = run(FLAGS.checkpoint, FLAGS.batch_size, FLAGS.dataset_name,
++  predictions = run(FLAGS.checkpoint, FLAGS.eval_batch_size, FLAGS.dataset_name,
+                   FLAGS.image_path_pattern)
+-  for line in predictions:
+-    print(line)
+-
++  # for line in predictions:
++  #   print(line)
+ 
+ if __name__ == '__main__':
+   tf.app.run()
